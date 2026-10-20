@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#262b44" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PokéPixel" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <title>POKÉ-PIXEL RPG - เกมโปเกมอนพิกเซลอาร์ต (PWA เซฟอัตโนมัติ)</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Top Handheld Console Header -->
+  <header class="console-header">
+    <div class="game-logo">
+      <h1>👾 POKÉ-PIXEL RPG</h1>
+      <span id="saveStatusBadge" class="save-badge">💾 เซฟอัตโนมัติพร้อมใช้งาน</span>
+    </div>
+
+    <div class="hud-metrics">
+      <div class="metric-chip">📖 สมุดภาพ: <span id="hudDexCount" style="color:#ffd166;">2/12</span></div>
+      <div class="metric-chip">🏅 เข็มกลัดยิม: <span id="hudBadges" style="color:#80ed99;">0</span></div>
+      <div class="metric-chip">🪙 เหรียญ: <span id="hudCoins" style="color:#ffd166;">350</span></div>
+    </div>
+
+    <nav class="mode-tabs">
+      <div class="tabs-left">
+        <button class="pixel-tab active" data-view="world">🗺️ แผนที่โลก (MAP)</button>
+        <button class="pixel-tab" data-view="battle">⚔️ ฉากต่อสู้ & จับ (BATTLE)</button>
+        <button class="pixel-tab" data-view="dex">👾 คลังพิกเซล (SPRITES)</button>
+      </div>
+      <div class="tabs-right">
+        <button id="btnToggleBgm" class="pixel-tab" style="background:#1b4332;border-color:#80ed99;color:#fff;font-size:0.78rem;">
+          🎵 เพลง: เปิด
+        </button>
+        <button id="btnToggleSfx" class="pixel-tab" style="background:#1d3557;border-color:#72efdd;color:#fff;font-size:0.78rem;">
+          🔊 เอฟเฟกต์: เปิด
+        </button>
+        <button id="btnInstallPwa" class="pixel-tab" style="background:#2b9348;border-color:#b7efc5;color:#fff;font-size:0.78rem;">
+          📲 ติดตั้งแอป (PWA)
+        </button>
+        <button id="btnResetSave" class="pixel-tab" style="background:#3a2332;border-color:#ff758f;font-size:0.78rem;">
+          🗑️ รีเซ็ตเซฟ
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <!-- Main Console Grid -->
+  <main class="console-layout">
+
+    <!-- Left Screen Frame -->
+    <section class="screen-frame">
+
+      <!-- VIEW 1: PIXEL OVERWORLD MAP -->
+      <div id="view-world" class="screen-view active">
+        <div class="overworld-viewport">
+          <canvas id="worldCanvas" width="640" height="432"></canvas>
+          <div class="overworld-banner">
+            <div class="pixel-tag">🌿 แตะบนแมพหรือกดปุ่มลูกศรค้างเพื่อเดิน</div>
+            <div class="pixel-tag">🏥 แตะ Pokémon Center ฮีลฟรี</div>
+          </div>
+        </div>
+
+        <div class="overworld-toolbar">
+          <div class="dpad-controls">
+            <div class="dpad-cross">
+              <div></div>
+              <button class="dpad-btn" data-dir="up" title="เดินขึ้น">▲</button>
+              <div></div>
+              <button class="dpad-btn" data-dir="left" title="เดินซ้าย">◀</button>
+              <button class="dpad-btn" data-dir="down" title="เดินลง">▼</button>
+              <button class="dpad-btn" data-dir="right" title="เดินขวา">▶</button>
+            </div>
+            <span style="font-size:0.78rem;color:#c0cbdc;">กดค้างเพื่อเดิน<br/>หรือแตะบนแมพ</span>
+          </div>
+
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button id="btnWildEncounter" class="px-btn btn-green">🌿 สุ่มเจอโปเกมอนป่า</button>
+            <button id="btnGymChallenge" class="px-btn btn-gold">⚔️ ท้าดวลยิมลีดเดอร์!</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW 2: GBA TURN-BASED BATTLE & CATCHING -->
+      <div id="view-battle" class="screen-view">
+        <div class="battle-screen-wrap">
+
+          <!-- Battle Field Upper -->
+          <div class="battle-field">
+            <div id="battleVfxLayer" class="vfx-layer"></div>
+
+            <!-- Enemy GBA Status Box (Top-Left) -->
+            <div class="gba-hud-box enemy-hud">
+              <div class="hud-top-row">
+                <span id="enemyNameTxt">PIKACHU</span>
+                <span id="enemyStatusBadge"></span>
+                <span id="enemyLvTxt" class="lvl-tag">Lv5</span>
+              </div>
+              <div class="hp-bar-container">
+                <span class="hp-label">HP</span>
+                <div class="hp-track">
+                  <div id="enemyHpFill" class="hp-fill" style="width:100%;"></div>
+                </div>
+              </div>
+              <div class="hud-sub-row">
+                <span id="enemyCatchHint">🎯 โจมตีลดเลือดเพื่อให้จับง่ายขึ้น!</span>
+              </div>
+            </div>
+
+            <!-- Enemy Pixel Sprite Stage (Top-Right) -->
+            <div class="enemy-stage">
+              <div id="enemySpriteBox" class="battle-sprite-box"></div>
+              <div id="battlePokeballHolder" class="battle-pokeball-holder"></div>
+              <div class="pixel-platform"></div>
+            </div>
+
+            <!-- Player Pixel Sprite Stage (Bottom-Left) -->
+            <div class="player-stage">
+              <div id="playerSpriteBox" class="battle-sprite-box"></div>
+              <div class="pixel-platform"></div>
+            </div>
+
+            <!-- Player GBA Status Box (Bottom-Right) -->
+            <div class="gba-hud-box player-hud">
+              <div class="hud-top-row">
+                <span id="playerNameTxt">PIKACHU</span>
+                <span id="playerLvTxt" class="lvl-tag">Lv6</span>
+              </div>
+              <div class="hp-bar-container">
+                <span class="hp-label">HP</span>
+                <div class="hp-track">
+                  <div id="playerHpFill" class="hp-fill" style="width:100%;"></div>
+                </div>
+              </div>
+              <div class="hud-sub-row">
+                <span>พลังชีวิต</span>
+                <span id="playerHpNums">52/52</span>
+              </div>
+              <div class="exp-track" title="หลอดค่าประสบการณ์ EXP">
+                <div id="playerExpFill" class="exp-fill" style="width:0%;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Lower GBA Dialog & 4-Button Command Box -->
+          <div class="battle-bottom-panel">
+            <div class="gba-dialog-box">
+              <div id="battleDialogText">🌿 โปเกมอนป่าปรากฏตัว! เลือกท่าโจมตีด้านล่าง หรือกดกระเป๋าเพื่อปาโปเกบอลจับได้เลย!</div>
+              <div id="battleSubMenu"></div>
+            </div>
+
+            <div class="gba-cmd-box">
+              <button id="cmdFightBtn" class="cmd-btn cmd-fight active-cmd">⚔️ ต่อสู้ (FIGHT)</button>
+              <button id="cmdBagBtn" class="cmd-btn cmd-bag">🎒 กระเป๋า/จับ (BAG)</button>
+              <button id="cmdPokeBtn" class="cmd-btn cmd-poke">🐾 สลับตัว (PARTY)</button>
+              <button id="cmdRunBtn" class="cmd-btn cmd-run">🏃 หนี (RUN)</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- VIEW 3: PIXEL ART SPRITE SHEET & POKEDEX -->
+      <div id="view-dex" class="screen-view">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+          <div>
+            <h3 style="color:#ffd166;">👾 คลัง Pixel Art Sprites 16x16 (วาดพิกเซลแท้ 12 ตัว)</h3>
+            <p style="font-size:0.8rem;color:#c0cbdc;">แตะที่ตัวโปเกมอนเพื่อเทียบสี Normal / Shiny, ดูค่าพลังพื้นฐาน หรือกดท้าสู้ทันที</p>
+          </div>
+          <button id="btnToggleDexShiny" class="px-btn btn-gold">✨ สลับโหมดสีพิเศษ (SHINY)</button>
+        </div>
+
+        <div id="dexSpriteGrid" class="dex-grid"></div>
+      </div>
+
+    </section>
+
+    <!-- Right Sidebar: Party Team & PokéMart -->
+    <aside class="party-sidebar">
+      <div class="sidebar-heading">
+        <span>🐾 ทีมโปเกมอน (สูงสุด 6 ตัว)</span>
+        <button id="btnHealCenter" class="px-btn btn-green" style="font-size:0.75rem;padding:4px 8px;">
+          🏥 ฮีลเต็มฟรี
+        </button>
+      </div>
+
+      <div id="partyListContainer" class="party-list"></div>
+
+      <div class="shop-panel">
+        <div style="font-weight:700;font-size:0.86rem;color:#ffd166;">🛒 ร้านค้า POKÉ MART (ซื้อบอล & ยา)</div>
+        <div class="shop-grid">
+          <button class="move-btn" onclick="buyShopItem('pokeball')">
+            <span>🔴 โปเกบอล</span><span style="color:#ffd166;">25🪙</span>
+          </button>
+          <button class="move-btn" onclick="buyShopItem('greatball')">
+            <span>🔵 เกรทบอล</span><span style="color:#ffd166;">60🪙</span>
+          </button>
+          <button class="move-btn" onclick="buyShopItem('ultraball')">
+            <span>🟡 อัลตร้าบอล</span><span style="color:#ffd166;">110🪙</span>
+          </button>
+          <button class="move-btn" onclick="buyShopItem('masterball')">
+            <span>🟣 มาสเตอร์บอล</span><span style="color:#ffd166;">300🪙</span>
+          </button>
+          <button class="move-btn" onclick="buyShopItem('potion')">
+            <span>🧪 โพชั่น +35</span><span style="color:#ffd166;">30🪙</span>
+          </button>
+          <button class="move-btn" onclick="buyShopItem('superpotion')">
+            <span>🧪 ซูเปอร์ +90</span><span style="color:#ffd166;">70🪙</span>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+  </main>
+
+  <!-- Modal for Catch / Gym Victory / Sprite Inspector -->
+  <div id="pixelModal" class="pixel-modal-backdrop">
+    <div id="pixelModalContent" class="pixel-modal-card"></div>
+  </div>
+
+  <script src="sprites.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
