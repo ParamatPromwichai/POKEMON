@@ -23,7 +23,7 @@
     </div>
 
     <div class="hud-metrics">
-      <div class="metric-chip">📖 สมุดภาพ: <span id="hudDexCount" style="color:#ffd166;">2/12</span></div>
+      <div class="metric-chip">📖 สมุดภาพ: <span id="hudDexCount" style="color:#ffd166;">2/30</span></div>
       <div class="metric-chip">🏅 เข็มกลัดยิม: <span id="hudBadges" style="color:#80ed99;">0</span></div>
       <div class="metric-chip">🪙 เหรียญ: <span id="hudCoins" style="color:#ffd166;">350</span></div>
     </div>
@@ -32,7 +32,7 @@
       <div class="tabs-left">
         <button class="pixel-tab active" data-view="world">🗺️ แผนที่โลก (MAP)</button>
         <button class="pixel-tab" data-view="battle">⚔️ ฉากต่อสู้ & จับ (BATTLE)</button>
-        <button class="pixel-tab" data-view="dex">👾 คลังพิกเซล (SPRITES)</button>
+        <button class="pixel-tab" data-view="dex">👾 คลังพิกเซล (30 ตัว)</button>
       </div>
       <div class="tabs-right">
         <button id="btnToggleBgm" class="pixel-tab" style="background:#1b4332;border-color:#80ed99;color:#fff;font-size:0.78rem;">
@@ -170,8 +170,8 @@
       <div id="view-dex" class="screen-view">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
           <div>
-            <h3 style="color:#ffd166;">👾 คลัง Pixel Art Sprites 16x16 (วาดพิกเซลแท้ 12 ตัว)</h3>
-            <p style="font-size:0.8rem;color:#c0cbdc;">แตะที่ตัวโปเกมอนเพื่อเทียบสี Normal / Shiny, ดูค่าพลังพื้นฐาน หรือกดท้าสู้ทันที</p>
+            <h3 style="color:#ffd166;">👾 คลัง Pixel Art Sprites 16x16 (ครบ 30 สายพันธุ์ + สายวิวัฒนาการ)</h3>
+            <p style="font-size:0.8rem;color:#c0cbdc;">แตะที่ตัวโปเกมอนเพื่อฟังเสียงร้อง, ดูสายวิวัฒนาการ, เทียบสี Shiny หรือกดท้าสู้ทันที</p>
           </div>
           <button id="btnToggleDexShiny" class="px-btn btn-gold">✨ สลับโหมดสีพิเศษ (SHINY)</button>
         </div>
@@ -193,7 +193,7 @@
       <div id="partyListContainer" class="party-list"></div>
 
       <div class="shop-panel">
-        <div style="font-weight:700;font-size:0.86rem;color:#ffd166;">🛒 ร้านค้า POKÉ MART (ซื้อบอล & ยา)</div>
+        <div style="font-weight:700;font-size:0.86rem;color:#ffd166;">🛒 ร้านค้า POKÉ MART (บอล, ยา & วิวัฒนาการ)</div>
         <div class="shop-grid">
           <button class="move-btn" onclick="buyShopItem('pokeball')">
             <span>🔴 โปเกบอล</span><span style="color:#ffd166;">25🪙</span>
@@ -212,6 +212,12 @@
           </button>
           <button class="move-btn" onclick="buyShopItem('superpotion')">
             <span>🧪 ซูเปอร์ +90</span><span style="color:#ffd166;">70🪙</span>
+          </button>
+          <button class="move-btn" style="border-color:#72efdd;" onclick="useRareCandyOnLead()">
+            <span>🍬 แคนดี้ +1Lv</span><span style="color:#ffd166;">40🪙</span>
+          </button>
+          <button class="move-btn" style="border-color:#f72585;" onclick="triggerManualEvolveLead()">
+            <span>💎 หินวิวัฒนาการ</span><span style="color:#ffd166;">80🪙</span>
           </button>
         </div>
       </div>

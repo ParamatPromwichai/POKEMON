@@ -1,8 +1,8 @@
 // ============================================================================
-// POKÉ-PIXEL RPG ENGINE (Overworld + Turn-Based Battle + 8-Bit Audio + PWA)
+// POKÉ-PIXEL RPG ENGINE (30 Pokémon + Evolution System + 8-Bit Audio + PWA)
 // ============================================================================
 
-const SAVE_STORAGE_KEY = 'POKE_PIXEL_RPG_SAVE_V2';
+const SAVE_STORAGE_KEY = 'POKE_PIXEL_RPG_SAVE_V3';
 let deferredPwaPrompt = null;
 
 // ============================================================================
@@ -13,7 +13,7 @@ const SFX = {
   noiseBuf: null,
   sfxEnabled: true,
   bgmEnabled: true,
-  bgmMode: 'overworld', // 'overworld' | 'wild' | 'gym'
+  bgmMode: 'overworld',
   bgmTimer: null,
   bgmStep: 0,
 
@@ -22,7 +22,6 @@ const SFX = {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (AudioCtx) {
         this.ctx = new AudioCtx();
-        // Create 1-second white noise buffer for retro percussion, fire, grass, & hits
         const sr = this.ctx.sampleRate;
         this.noiseBuf = this.ctx.createBuffer(1, sr, sr);
         const out = this.noiseBuf.getChannelData(0);
@@ -34,7 +33,6 @@ const SFX = {
     }
   },
 
-  // Basic chiptune note
   beep(freq, type = 'square', dur = 0.1, delay = 0, vol = 0.09) {
     if (!this.sfxEnabled) return;
     this.init();
@@ -52,7 +50,6 @@ const SFX = {
     osc.stop(t + dur);
   },
 
-  // Pitch-sliding note (great for cries, lasers, jumps, faints)
   slide(startFreq, endFreq, type = 'square', dur = 0.18, delay = 0, vol = 0.1) {
     if (!this.sfxEnabled) return;
     this.init();
@@ -71,7 +68,6 @@ const SFX = {
     osc.stop(t + dur);
   },
 
-  // Filtered retro noise burst (fire, grass rustle, hit impact, splash)
   noise(dur = 0.12, delay = 0, vol = 0.1, filterFreq = 1200, filterType = 'bandpass') {
     if (!this.sfxEnabled) return;
     this.init();
@@ -95,7 +91,6 @@ const SFX = {
     src.stop(t + dur);
   },
 
-  // UI & Map SFX
   uiClick() {
     this.beep(780, 'square', 0.045, 0, 0.06);
   },
@@ -114,91 +109,93 @@ const SFX = {
     notes.forEach((f, i) => this.beep(f, 'sine', 0.1, i * 0.065, 0.12));
   },
 
-  // Unique 8-Bit Electronic Cry for each of the 12 Pokemon!
+  // --- Evolution Cutscene Audio Effects! ---
+  evolutionStart() {
+    // Classic "What? POKÉMON is evolving!" intro chord
+    [392, 493.88, 587.33, 783.99].forEach((f, i) => {
+      this.beep(f, 'square', 0.12, i * 0.09, 0.11);
+    });
+  },
+  evolutionPulse(stepIdx) {
+    // Classic alternating GBA evolution notes that pitch up as it progresses
+    const pitchBoost = 1 + Math.floor(stepIdx / 4) * 0.08;
+    const f1 = (stepIdx % 2 === 0 ? 392 : 523.25) * pitchBoost;
+    const f2 = (stepIdx % 2 === 0 ? 493.88 : 659.25) * pitchBoost;
+    this.beep(f1, 'square', 0.11, 0, 0.1);
+    this.beep(f2, 'triangle', 0.11, 0.09, 0.1);
+  },
+  evolutionComplete() {
+    // Grand Evolution Fanfare + Sparkle!
+    const notes = [523.25, 587.33, 659.25, 783.99, 659.25, 783.99, 1046.5];
+    const delays = [0, 0.11, 0.22, 0.34, 0.50, 0.62, 0.76];
+    notes.forEach((f, i) => {
+      this.beep(f, 'square', i === notes.length - 1 ? 0.45 : 0.11, delays[i], 0.13);
+    });
+    this.noise(0.25, 0.76, 0.09, 2500, 'highpass');
+  },
+
+  // --- Unique 8-Bit Electronic Cry for all 30 Pokemon! ---
   playPokemonCry(pokeId) {
     if (!this.sfxEnabled) return;
     const id = Number(pokeId) || 1;
-    const base = 260 + (id * 37) % 340;
-    switch (id) {
-      case 1: // Pikachu (bright electric squeak: Pika-chu!)
-        this.slide(660, 990, 'square', 0.09, 0, 0.1);
-        this.slide(880, 520, 'square', 0.14, 0.1, 0.1);
-        this.beep(1180, 'triangle', 0.08, 0.25, 0.09);
-        break;
-      case 2: // Bulbasaur (frog-dino growl-chirp)
-        this.slide(220, 380, 'sawtooth', 0.14, 0, 0.1);
-        this.slide(340, 190, 'square', 0.18, 0.15, 0.1);
-        break;
-      case 3: // Charmander (fiery lizard chirp)
-        this.slide(440, 680, 'square', 0.08, 0, 0.1);
-        this.slide(520, 760, 'sawtooth', 0.12, 0.09, 0.1);
-        this.noise(0.1, 0.18, 0.06, 1500);
-        break;
-      case 4: // Squirtle (bubbly turtle chirp)
-        [420, 560, 480, 680].forEach((f, i) => this.slide(f, f + 120, 'triangle', 0.07, i * 0.06, 0.11));
-        break;
-      case 5: // Jigglypuff (sweet fairy melody)
-        [523.25, 659.25, 587.33, 783.99].forEach((f, i) => this.beep(f, 'sine', 0.14, i * 0.11, 0.13));
-        break;
-      case 6: // Eevee (cute trill)
-        this.slide(580, 880, 'triangle', 0.11, 0, 0.11);
-        this.slide(880, 640, 'triangle', 0.12, 0.11, 0.11);
-        this.slide(640, 960, 'sine', 0.12, 0.22, 0.11);
-        break;
-      case 7: // Psyduck (quack-quack!)
-        this.slide(340, 260, 'sawtooth', 0.11, 0, 0.1);
-        this.slide(360, 240, 'sawtooth', 0.14, 0.14, 0.1);
-        break;
-      case 8: // Togepi (high happy egg chirp: Toge-priii!)
-        this.beep(784, 'sine', 0.07, 0, 0.11);
-        this.beep(880, 'sine', 0.07, 0.08, 0.11);
-        this.slide(987, 1480, 'triangle', 0.18, 0.16, 0.12);
-        break;
-      case 9: // Snorlax (deep sleepy bass yawn)
-        this.slide(160, 110, 'sawtooth', 0.25, 0, 0.12);
-        this.slide(130, 85, 'triangle', 0.3, 0.24, 0.12);
-        break;
-      case 10: // Gengar (spooky ghost laugh)
-        [310, 277, 246, 220, 293].forEach((f, i) => this.beep(f, 'sawtooth', 0.07, i * 0.06, 0.1));
-        break;
-      case 11: // Dratini (mystic dragon whistle)
-        this.slide(480, 960, 'sine', 0.2, 0, 0.11);
-        this.slide(960, 640, 'triangle', 0.18, 0.18, 0.1);
-        break;
-      case 12: // Mew (high psychic kitty mew!)
-      default:
-        this.slide(880, 1320, 'sine', 0.14, 0, 0.11);
-        this.slide(1320, 740, 'sine', 0.2, 0.13, 0.11);
-        break;
+    const p = POKEMON_DB.find(x => x.id === id) || POKEMON_DB[0];
+
+    // Customize cry based on Pokemon stage & elemental family
+    const isFinalStage = !p.evolvesTo && p.baseHp >= 84;
+    const isMidStage = p.evolvesTo && p.baseHp >= 62;
+
+    if (id === 10 || id === 11 || id === 12 || id === 15) {
+      // Electric family (Pichu / Pikachu / Raichu / Jolteon)
+      const base = id === 10 ? 820 : id === 11 ? 660 : 420;
+      this.slide(base, base * 1.45, 'square', 0.09, 0, 0.1);
+      this.slide(base * 1.3, base * 0.75, 'square', 0.14, 0.1, 0.1);
+      this.beep(base * 1.6, 'triangle', 0.09, 0.24, 0.1);
+    } else if (isFinalStage) {
+      // Mighty Final Evolution Roar (Venusaur, Charizard, Blastoise, Gengar, Dragonite, Gyarados, Snorlax)
+      const root = 150 + (id * 13) % 120;
+      this.slide(root * 1.8, root * 0.7, 'sawtooth', 0.22, 0, 0.13);
+      this.noise(0.24, 0.05, 0.11, 900, 'lowpass');
+      this.slide(root * 1.4, root * 0.55, 'square', 0.28, 0.2, 0.12);
+    } else if (isMidStage) {
+      // Mid-stage fierce cry (Ivysaur, Charmeleon, Wartortle, Haunter, Dragonair)
+      const root = 260 + (id * 19) % 160;
+      this.slide(root, root * 1.5, 'sawtooth', 0.12, 0, 0.11);
+      this.slide(root * 1.4, root * 0.8, 'square', 0.18, 0.12, 0.11);
+    } else if (p.type === 'fairy' || id === 30) {
+      // Cute Fairy / Mew musical trill
+      const root = 520 + (id * 23) % 240;
+      [root, root * 1.25, root * 1.12, root * 1.5].forEach((f, i) => {
+        this.beep(f, 'sine', 0.11, i * 0.08, 0.12);
+      });
+    } else {
+      // Cute Starter / Base stage chirp
+      const root = 340 + (id * 29) % 240;
+      this.slide(root, root * 1.35, 'triangle', 0.1, 0, 0.11);
+      this.slide(root * 1.2, root * 0.85, 'square', 0.13, 0.11, 0.1);
     }
   },
 
-  // Move Element Attack Sound Effects!
   playMoveSFX(vfxType) {
     if (!this.sfxEnabled) return;
     switch (vfxType) {
       case 'electric':
-        // Rapid thunderbolt zaps
         [920, 1380, 680, 1520, 840, 1680].forEach((f, i) => {
           this.beep(f, 'sawtooth', 0.05, i * 0.045, 0.11);
         });
         this.noise(0.22, 0.05, 0.09, 2800, 'bandpass');
         break;
       case 'fire':
-        // Roaring flame burst
         this.slide(280, 120, 'sawtooth', 0.32, 0, 0.11);
         this.noise(0.35, 0, 0.14, 700, 'lowpass');
         this.noise(0.25, 0.1, 0.1, 1400, 'bandpass');
         break;
       case 'water':
-        // Bubbling water splash
         [380, 520, 440, 660, 580, 780].forEach((f, i) => {
           this.slide(f, f + 180, 'sine', 0.06, i * 0.045, 0.12);
         });
         this.noise(0.2, 0.12, 0.08, 1800, 'bandpass');
         break;
       case 'leaf':
-        // Razor leaf whip slices
         this.noise(0.08, 0, 0.12, 3200, 'highpass');
         this.slide(900, 350, 'triangle', 0.09, 0, 0.1);
         this.noise(0.08, 0.12, 0.12, 3500, 'highpass');
@@ -206,24 +203,20 @@ const SFX = {
         break;
       case 'powder':
       case 'music':
-        // Sleep lullaby chime
         [523.25, 659.25, 783.99, 659.25, 523.25].forEach((f, i) => {
           this.beep(f, 'sine', 0.14, i * 0.08, 0.11);
         });
         break;
       case 'psychic':
-        // Cosmic warble wave
         [620, 880, 540, 960, 480, 1080].forEach((f, i) => {
           this.slide(f, f * 0.8, 'sine', 0.07, i * 0.05, 0.11);
         });
         break;
       case 'shadow':
-        // Eerie dark pulse
         this.slide(320, 110, 'sawtooth', 0.28, 0, 0.12);
         this.beep(196, 'square', 0.25, 0.06, 0.1);
         break;
       case 'dragon':
-        // Fierce dragon breath
         this.slide(420, 140, 'sawtooth', 0.32, 0, 0.13);
         this.noise(0.3, 0.04, 0.12, 950, 'bandpass');
         break;
@@ -233,7 +226,6 @@ const SFX = {
       case 'slash':
       case 'impact':
       default:
-        // Heavy physical tackle punch
         this.slide(240, 65, 'square', 0.14, 0, 0.14);
         this.noise(0.14, 0, 0.14, 900, 'lowpass');
         break;
@@ -246,15 +238,12 @@ const SFX = {
 
   hit(effective = 1) {
     if (effective > 1) {
-      // Super Effective! Heavy crunch + high ring
       this.slide(580, 120, 'sawtooth', 0.18, 0, 0.15);
       this.noise(0.18, 0, 0.15, 1100, 'bandpass');
       this.beep(880, 'square', 0.1, 0.08, 0.12);
     } else if (effective < 1) {
-      // Not very effective dull thud
       this.slide(180, 90, 'triangle', 0.12, 0, 0.09);
     } else {
-      // Normal hit
       this.slide(280, 95, 'square', 0.13, 0, 0.12);
       this.noise(0.1, 0, 0.11, 1000, 'lowpass');
     }
@@ -302,7 +291,6 @@ const SFX = {
     [440, 554.37, 659.25, 880, 1108.73].forEach((n, i) => this.beep(n, 'triangle', 0.13, i * 0.08, 0.14));
   },
 
-  // --- 8-Bit Chiptune Background Music Loop ---
   startBGM(mode = 'overworld') {
     this.bgmMode = mode;
     this.bgmStep = 0;
@@ -400,7 +388,7 @@ function createPokemonInstance(template, level = 5, isShiny = false) {
 
 // --- Global Game State ---
 const Game = {
-  coins: 350,
+  coins: 400,
   badges: 0,
   party: [],
   pcBox: [],
@@ -423,16 +411,17 @@ const Game = {
     turnBusy: false,
     menuMode: 'fight'
   },
-  dexShinyPreview: false
+  dexShinyPreview: false,
+  evolvingNow: false
 };
 
 // ============================================================================
-// PERSISTENT SAVE / LOAD SYSTEM (LocalStorage + Persistent Storage API)
+// PERSISTENT SAVE / LOAD SYSTEM (Auto-migrates old saves to 30-Pokemon DB)
 // ============================================================================
 function saveGameData() {
   try {
     const payload = {
-      version: 2,
+      version: 3,
       savedAt: Date.now(),
       coins: Game.coins,
       badges: Game.badges,
@@ -458,16 +447,32 @@ function saveGameData() {
 
 function loadGameData() {
   try {
-    const raw = localStorage.getItem(SAVE_STORAGE_KEY);
+    const raw = localStorage.getItem(SAVE_STORAGE_KEY) || localStorage.getItem('POKE_PIXEL_RPG_SAVE_V2');
     if (!raw) return false;
     const data = JSON.parse(raw);
     if (!data || !Array.isArray(data.party) || data.party.length === 0) return false;
 
-    Game.coins = typeof data.coins === 'number' ? data.coins : 350;
+    // Sync each saved Pokemon with new 30-Pokemon DB by code
+    const syncPoke = p => {
+      const tmpl = POKEMON_DB.find(t => t.code === p.code) || POKEMON_DB.find(t => t.id === p.id) || POKEMON_DB[0];
+      p.id = tmpl.id;
+      p.code = tmpl.code;
+      p.name = tmpl.name;
+      p.type = tmpl.type;
+      p.moves = [...tmpl.moves];
+      return p;
+    };
+
+    Game.coins = typeof data.coins === 'number' ? data.coins : 400;
     Game.badges = typeof data.badges === 'number' ? data.badges : 0;
-    Game.party = data.party;
-    Game.pcBox = Array.isArray(data.pcBox) ? data.pcBox : [];
-    Game.pokedex = data.pokedex || {};
+    Game.party = data.party.map(syncPoke);
+    Game.pcBox = Array.isArray(data.pcBox) ? data.pcBox.map(syncPoke) : [];
+    Game.pokedex = {};
+    [...Game.party, ...Game.pcBox].forEach(p => {
+      if (!Game.pokedex[p.id]) Game.pokedex[p.id] = { count: 0, shiny: false };
+      Game.pokedex[p.id].count++;
+      if (p.isShiny) Game.pokedex[p.id].shiny = true;
+    });
 
     if (data.bagCounts) {
       Object.keys(Game.bag).forEach(k => {
@@ -491,6 +496,7 @@ function resetGameSave() {
   SFX.uiClick();
   if (!confirm('ต้องการลบข้อมูลเซฟทั้งหมดแล้วเริ่มเกมใหม่ตั้งแต่ต้นใช่ไหม?')) return;
   localStorage.removeItem(SAVE_STORAGE_KEY);
+  localStorage.removeItem('POKE_PIXEL_RPG_SAVE_V2');
   window.location.reload();
 }
 
@@ -519,13 +525,230 @@ function initPWA() {
         deferredPwaPrompt = null;
         installBtn.style.display = 'none';
       } else {
-        alert('📲 วิธีติดตั้งเป็นแอป (PWA):\n• มือถือ Android/Chrome: กดเมนู ⋮ มุมขวาบน เลือก "ติดตั้งแอป" หรือ "เพิ่มลงในหน้าจอหลัก"\n• มือถือ iPhone (Safari): กดปุ่มแชร์ (Share) ด้านล่าง เลือก "เพิ่มไปยังหน้าจอโฮม (Add to Home Screen)"\n\nข้อมูลโปเกมอนและไอเทมทั้งหมดจะถูกเซฟไว้ในเครื่องอัตโนมัติ ไม่หายแน่นอน!');
+        alert('📲 วิธีติดตั้งเป็นแอป (PWA):\n• มือถือ Android/Chrome: กดเมนู ⋮ มุมขวาบน เลือก "ติดตั้งแอป" หรือ "เพิ่มลงในหน้าจอหลัก"\n• มือถือ iPhone (Safari): กดปุ่มแชร์ (Share) ด้านล่าง เลือก "เพิ่มไปยังหน้าจอโฮม (Add to Home Screen)"\n\nข้อมูลโปเกมอน 30 สายพันธุ์ การวิวัฒนาการ และไอเทมทั้งหมดจะถูกเซฟไว้ในเครื่องอัตโนมัติ ไม่หายแน่นอน!');
       }
     });
   }
 }
 
-// --- Pixel Overworld Map State ---
+// ============================================================================
+// EVOLUTION SYSTEM (Cutscene + Multi-branch Eevee + Audio Fanfare!)
+// ============================================================================
+function getEvolutionTemplateFor(pokeInst) {
+  const tmpl = POKEMON_DB.find(t => t.id === pokeInst.id);
+  if (!tmpl || !tmpl.evolvesTo) return null;
+  return tmpl;
+}
+
+function canPokemonEvolveNow(pokeInst) {
+  const tmpl = getEvolutionTemplateFor(pokeInst);
+  if (!tmpl) return false;
+  return pokeInst.level >= (tmpl.evolveLevel || 8);
+}
+
+// Trigger evolution for a specific party index
+function requestEvolvePartyMember(partyIdx, forcedTargetId = null) {
+  if (Game.evolvingNow) return;
+  const poke = Game.party[partyIdx];
+  if (!poke) return;
+  const tmpl = getEvolutionTemplateFor(poke);
+  if (!tmpl) {
+    SFX.hit(0.5);
+    alert(`${poke.name} เป็นร่างสุดยอดแล้ว ไม่สามารถวิวัฒนาการต่อได้จ้า!`);
+    return;
+  }
+
+  // Multi-branch evolution (Eevee #13 -> Vaporeon #14, Jolteon #15, Flareon #16)
+  if (Array.isArray(tmpl.evolvesTo) && !forcedTargetId) {
+    SFX.uiClick();
+    const modal = document.getElementById('pixelModal');
+    const box = document.getElementById('pixelModalContent');
+    box.innerHTML = `
+      <h2 style="color:#ffd166;margin-bottom:8px;">✨ เลือกสายวิวัฒนาการของ ${poke.name.split(' ')[0]}!</h2>
+      <p style="font-size:0.86rem;color:#c0cbdc;margin-bottom:12px;">เลือกธาตุที่ต้องการให้ ${poke.name.split(' ')[0]} วิวัฒนาการได้เลย:</p>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;">
+        ${tmpl.evolvesTo.map(targetId => {
+          const targetTmpl = POKEMON_DB.find(x => x.id === targetId);
+          const tInfo = TYPE_INFO[targetTmpl.type];
+          return `
+            <div class="dex-card" onclick="requestEvolvePartyMember(${partyIdx}, ${targetId})">
+              ${getPokemonPixelImgHTML(targetTmpl.code, poke.isShiny, 4)}
+              <div style="font-weight:700;font-size:0.8rem;margin-top:6px;">${targetTmpl.name.split(' ')[0]}</div>
+              <span style="background:${tInfo.color};font-size:0.68rem;padding:1px 5px;margin-top:3px;">${tInfo.label}</span>
+            </div>
+          `;
+        }).join('')}
+      </div>
+      <button class="px-btn" onclick="document.getElementById('pixelModal').classList.remove('open')">ยกเลิก</button>
+    `;
+    modal.classList.add('open');
+    return;
+  }
+
+  const nextId = forcedTargetId || (Array.isArray(tmpl.evolvesTo) ? tmpl.evolvesTo[0] : tmpl.evolvesTo);
+  const nextTmpl = POKEMON_DB.find(t => t.id === nextId);
+  if (!nextTmpl) return;
+
+  playEvolutionCutscene(poke, nextTmpl);
+}
+
+function playEvolutionCutscene(pokeInst, nextTemplate) {
+  Game.evolvingNow = true;
+  const oldName = pokeInst.name.split(' ')[0];
+  const oldCode = pokeInst.code;
+  const newCode = nextTemplate.code;
+  const isShiny = pokeInst.isShiny;
+
+  const modal = document.getElementById('pixelModal');
+  const box = document.getElementById('pixelModalContent');
+  modal.classList.add('open');
+
+  SFX.evolutionStart();
+
+  box.innerHTML = `
+    <h2 style="color:#ffd166;margin-bottom:8px;">✨ เอ๊ะ!? ${oldName} กำลังจะวิวัฒนาการ!!</h2>
+    <div id="evoStageBox" class="evo-stage-box">
+      <div id="evoSpriteSwap">${getPokemonPixelImgHTML(oldCode, isShiny, 7, 'evo-sprite-silhouette')}</div>
+    </div>
+    <p id="evoDialogTxt" style="font-size:0.95rem;color:#fff;font-weight:700;margin-bottom:12px;">
+      ร่างกายของ ${oldName} เปล่งแสงสว่างจ้า...
+    </p>
+  `;
+
+  // Rapidly alternate between old sprite and new sprite with accelerating 8-bit pulses!
+  let step = 0;
+  const totalSteps = 12;
+  const swapEl = document.getElementById('evoSpriteSwap');
+
+  const evoInterval = setInterval(() => {
+    step++;
+    SFX.evolutionPulse(step);
+    const showNew = step % 2 === 1;
+    if (swapEl) {
+      swapEl.innerHTML = getPokemonPixelImgHTML(
+        showNew ? newCode : oldCode,
+        isShiny,
+        7,
+        'evo-sprite-silhouette'
+      );
+    }
+
+    if (step >= totalSteps) {
+      clearInterval(evoInterval);
+      completeEvolutionTransform(pokeInst, nextTemplate);
+    }
+  }, 240);
+}
+
+function completeEvolutionTransform(pokeInst, nextTemplate) {
+  const oldName = pokeInst.name.split(' ')[0];
+
+  // Upgrade Pokemon Instance to new Evolution Template!
+  pokeInst.id = nextTemplate.id;
+  pokeInst.code = nextTemplate.code;
+  pokeInst.name = nextTemplate.name;
+  pokeInst.type = nextTemplate.type;
+  pokeInst.moves = [...nextTemplate.moves];
+
+  const mult = 1 + (pokeInst.level - 1) * 0.14;
+  pokeInst.maxHp = Math.floor(nextTemplate.baseHp * mult);
+  pokeInst.hp = pokeInst.maxHp;
+  pokeInst.atk = Math.floor(nextTemplate.baseAtk * mult);
+  pokeInst.def = Math.floor(nextTemplate.baseDef * mult);
+  pokeInst.spd = Math.floor(nextTemplate.baseSpd * mult);
+
+  if (!Game.pokedex[nextTemplate.id]) {
+    Game.pokedex[nextTemplate.id] = { count: 0, shiny: false };
+  }
+  Game.pokedex[nextTemplate.id].count++;
+  if (pokeInst.isShiny) Game.pokedex[nextTemplate.id].shiny = true;
+
+  saveGameData();
+  renderAllUI();
+  if (Game.battle.active) {
+    setupBattleSpritesAndHUD();
+    renderBattleCommandSubMenu();
+  }
+
+  SFX.evolutionComplete();
+  setTimeout(() => SFX.playPokemonCry(nextTemplate.id), 950);
+
+  const box = document.getElementById('pixelModalContent');
+  box.innerHTML = `
+    <h2 style="color:#80ed99;margin-bottom:8px;">🎊 ยินดีด้วย! วิวัฒนาการสำเร็จ!!</h2>
+    <div class="evo-stage-box" style="border-color:#80ed99;">
+      <div class="evo-complete-burst">${getPokemonPixelImgHTML(nextTemplate.code, pokeInst.isShiny, 7)}</div>
+    </div>
+    <h3 style="color:#ffd166;margin-bottom:6px;">
+      ${oldName} วิวัฒนาการเป็น 「${nextTemplate.name}」! ${pokeInst.isShiny ? '✨' : ''}
+    </h3>
+    <p style="font-size:0.86rem;color:#c0cbdc;margin-bottom:14px;">
+      พลังชีวิตเพิ่มขึ้นเป็น ${pokeInst.maxHp} • โจมตี ${pokeInst.atk} • ความเร็ว ${pokeInst.spd}<br/>
+      และเรียนรู้ท่าไม้ตายชุดใหม่เรียบร้อยแล้ว!
+    </p>
+    <button class="px-btn btn-green" onclick="finishEvolutionModal()">🌟 ยอดเยี่ยมเลย!</button>
+  `;
+}
+
+window.finishEvolutionModal = function () {
+  SFX.uiClick();
+  Game.evolvingNow = false;
+  document.getElementById('pixelModal').classList.remove('open');
+};
+
+// Shop / Quick Rare Candy & Evolution Stone Actions
+function useRareCandyOnLead() {
+  const lead = Game.party[0];
+  if (!lead) return;
+  if (Game.coins < 40) {
+    SFX.hit(0.5);
+    alert('🪙 เหรียญไม่พอ! (ต้องการ 40 เหรียญสำหรับแคนดี้ +1 เลเวล)');
+    return;
+  }
+  Game.coins -= 40;
+  lead.level++;
+  lead.nextExp = lead.level * 35;
+  const tmpl = POKEMON_DB.find(t => t.id === lead.id) || POKEMON_DB[0];
+  const mult = 1 + (lead.level - 1) * 0.14;
+  lead.maxHp = Math.floor(tmpl.baseHp * mult);
+  lead.hp = lead.maxHp;
+  lead.atk = Math.floor(tmpl.baseAtk * mult);
+  lead.def = Math.floor(tmpl.baseDef * mult);
+  lead.spd = Math.floor(tmpl.baseSpd * mult);
+
+  SFX.levelUp();
+  saveGameData();
+  renderAllUI();
+  if (Game.battle.active) updateBattleHUDs();
+
+  if (canPokemonEvolveNow(lead)) {
+    setTimeout(() => requestEvolvePartyMember(0), 500);
+  }
+}
+
+function triggerManualEvolveLead() {
+  const lead = Game.party[0];
+  if (!lead) return;
+  const tmpl = getEvolutionTemplateFor(lead);
+  if (!tmpl) {
+    SFX.hit(0.5);
+    alert(`🐾 ${lead.name} เป็นร่างสุดยอดแล้ว วิวัฒนาการต่อไม่ได้จ้า!`);
+    return;
+  }
+  if (Game.coins < 80) {
+    SFX.hit(0.5);
+    alert('🪙 เหรียญไม่พอ! (ต้องการ 80 เหรียญสำหรับหินวิวัฒนาการทันที)');
+    return;
+  }
+  Game.coins -= 80;
+  saveGameData();
+  renderAllUI();
+  requestEvolvePartyMember(0);
+}
+
+// ============================================================================
+// PIXEL OVERWORLD MAP STATE & LOOP
+// ============================================================================
 const Overworld = {
   canvas: null,
   ctx: null,
@@ -546,23 +769,24 @@ const Overworld = {
   gymLeader:  { x: 320, y: 356, name: 'ยิมลีดเดอร์ เรด (RED)' }
 };
 
-// Initialize Game
 window.addEventListener('DOMContentLoaded', () => {
   initPWA();
 
   const loaded = loadGameData();
   if (!loaded) {
-    const starter1 = createPokemonInstance(POKEMON_DB[0], 6, false);
-    const starter2 = createPokemonInstance(POKEMON_DB[1], 5, false);
-    registerPokemonOwned(starter1, false);
-    registerPokemonOwned(starter2, false);
+    // Starter Team: Pikachu (#11) Lv.6 + Bulbasaur (#1) Lv.6 + Charmander (#4) Lv.6
+    const s1 = createPokemonInstance(POKEMON_DB.find(p => p.id === 11), 6, false);
+    const s2 = createPokemonInstance(POKEMON_DB.find(p => p.id === 1), 6, false);
+    const s3 = createPokemonInstance(POKEMON_DB.find(p => p.id === 4), 6, false);
+    registerPokemonOwned(s1, false);
+    registerPokemonOwned(s2, false);
+    registerPokemonOwned(s3, false);
     saveGameData();
   }
 
   initOverworldCanvas();
   bindUIControls();
 
-  // Unlock Web Audio on first user interaction & start BGM
   const unlockAudio = () => {
     SFX.init();
     if (SFX.bgmEnabled && !SFX.bgmTimer) {
@@ -594,9 +818,6 @@ function registerPokemonOwned(pokeInst, autoSave = true) {
   if (autoSave) saveGameData();
 }
 
-// ============================================================================
-// OVERWORLD PIXEL MAP RENDERING & MOVEMENT
-// ============================================================================
 function initOverworldCanvas() {
   Overworld.canvas = document.getElementById('worldCanvas');
   Overworld.ctx = Overworld.canvas.getContext('2d');
@@ -674,7 +895,7 @@ function mainLoop(ts) {
 
 function updateOverworld(ts) {
   const worldActive = document.getElementById('view-world').classList.contains('active');
-  if (!worldActive) return;
+  if (!worldActive || Game.evolvingNow) return;
 
   const p = Overworld.player;
   let dx = 0, dy = 0;
@@ -854,7 +1075,7 @@ function drawOverworld(ts) {
 }
 
 // ============================================================================
-// TURN-BASED BATTLE & CATCHING SYSTEM (GBA STYLE)
+// TURN-BASED BATTLE & CATCHING SYSTEM
 // ============================================================================
 function getFirstHealthyPartyIndex() {
   return Game.party.findIndex(p => p.hp > 0);
@@ -903,10 +1124,11 @@ function startGymBattle() {
 
   SFX.battleStart();
   SFX.startBGM('gym');
-  const baseLv = Math.max(6, (Game.party[0]?.level || 5) + 1);
-  const t1 = createPokemonInstance(POKEMON_DB[2], baseLv, false);
-  const t2 = createPokemonInstance(POKEMON_DB[9], baseLv + 1, false);
-  const t3 = createPokemonInstance(POKEMON_DB[10], baseLv + 2, true);
+  const baseLv = Math.max(7, (Game.party[0]?.level || 6) + 1);
+  // Gym Leader uses evolved powerhouses: Charizard (#6), Gengar (#19), Gyarados (#24)
+  const t1 = createPokemonInstance(POKEMON_DB.find(p => p.id === 6), baseLv, false);
+  const t2 = createPokemonInstance(POKEMON_DB.find(p => p.id === 19), baseLv + 1, false);
+  const t3 = createPokemonInstance(POKEMON_DB.find(p => p.id === 24), baseLv + 2, true);
 
   setTimeout(() => SFX.playPokemonCry(t1.id), 350);
 
@@ -1002,7 +1224,6 @@ function calcWildCatchProbability(ballKey) {
   return Math.min(0.98, template.catchRate * ballBonus * hpFactor * statusBonus);
 }
 
-// --- Battle Menu Switching (FIGHT / BAG / POKEMON / RUN) ---
 function setCommandMenuMode(mode) {
   if (Game.battle.turnBusy) return;
   SFX.uiClick();
@@ -1030,7 +1251,7 @@ function renderBattleCommandSubMenu() {
     subBox.innerHTML = `
       <div class="sub-menu-grid">
         ${p.moves.map(mKey => {
-          const m = MOVES_DB[mKey];
+          const m = MOVES_DB[mKey] || MOVES_DB.tackle;
           const tInfo = TYPE_INFO[m.type];
           return `
             <button class="move-btn" onclick="executePlayerMove('${mKey}')">
@@ -1073,14 +1294,12 @@ function renderBattleCommandSubMenu() {
   }
 }
 
-// --- Execute Player Attack Move ---
 function executePlayerMove(moveKey) {
   const b = Game.battle;
   if (b.turnBusy || !b.active) return;
   const attacker = Game.party[b.playerIdx];
   const defender = b.enemy;
-  const move = MOVES_DB[moveKey];
-  if (!move) return;
+  const move = MOVES_DB[moveKey] || MOVES_DB.tackle;
 
   b.turnBusy = true;
   renderBattleCommandSubMenu();
@@ -1122,7 +1341,6 @@ function performAttackStep(attacker, defender, move, isPlayerAttacking, onComple
   const defBox = document.getElementById(isPlayerAttacking ? 'enemySpriteBox' : 'playerSpriteBox');
   atkBox.classList.add(isPlayerAttacking ? 'attack-lunge-right' : 'attack-lunge-left');
 
-  // Play elemental move SFX + visual particles!
   SFX.playMoveSFX(move.vfx);
   spawnBattleVFX(move.vfx, isPlayerAttacking);
 
@@ -1184,7 +1402,6 @@ function executeEnemyTurn() {
   });
 }
 
-// --- Use Bag Item (Throw Pokeball or Use Potion) ---
 function useBagItemInBattle(itemKey) {
   const b = Game.battle;
   if (b.turnBusy || !b.active) return;
@@ -1262,20 +1479,27 @@ function useBagItemInBattle(itemKey) {
         caughtPoke.status = null;
         registerPokemonOwned(caughtPoke, false);
 
-        const expGain = caughtPoke.level * 18;
-        const coinGain = caughtPoke.isShiny ? 150 : 50;
+        const expGain = caughtPoke.level * 22;
+        const coinGain = caughtPoke.isShiny ? 150 : 55;
         Game.coins += coinGain;
-        grantExpToActive(expGain);
+        const leveledUp = grantExpToActive(expGain);
         saveGameData();
 
         setBattleDialog(`🎉 ติ๊ง!! จับ ${caughtPoke.name} (Lv.${caughtPoke.level}) สำเร็จแล้ว! (+${coinGain}🪙)`);
-        showModalResult(
-          `🎉 จับโปเกมอนสำเร็จ!`,
-          caughtPoke,
-          `บันทึกเข้าทีมเรียบร้อย! รางวัล +${coinGain} เหรียญ และ +${expGain} EXP`
-        );
-        b.active = false;
-        b.turnBusy = false;
+        const activePoke = Game.party[b.playerIdx];
+        if (leveledUp && canPokemonEvolveNow(activePoke)) {
+          b.active = false;
+          b.turnBusy = false;
+          requestEvolvePartyMember(b.playerIdx);
+        } else {
+          showModalResult(
+            `🎉 จับโปเกมอนสำเร็จ!`,
+            caughtPoke,
+            `บันทึกเข้าทีมเรียบร้อย! รางวัล +${coinGain} เหรียญ และ +${expGain} EXP`
+          );
+          b.active = false;
+          b.turnBusy = false;
+        }
       } else {
         SFX.ballBreakOut();
         ballHolder.className = 'battle-pokeball-holder';
@@ -1310,8 +1534,8 @@ function handleEnemyFainted() {
   enemyBox.classList.add('faint-drop');
   SFX.faint();
 
-  const expGain = enemy.level * 24 + (b.isTrainer ? 35 : 0);
-  const coinGain = b.isTrainer ? 90 : 35;
+  const expGain = enemy.level * 28 + (b.isTrainer ? 45 : 0);
+  const coinGain = b.isTrainer ? 100 : 40;
   Game.coins += coinGain;
   const leveledUp = grantExpToActive(expGain);
   saveGameData();
@@ -1331,22 +1555,32 @@ function handleEnemyFainted() {
       setBattleDialog(`⚔️ ${b.trainerName} ส่ง ${b.enemy.name} (Lv.${b.enemy.level}) ออกมาสู้ต่อ!`);
     } else if (b.isTrainer) {
       Game.badges++;
-      Game.coins += 150;
+      Game.coins += 160;
       saveGameData();
       SFX.catchFanfare();
       SFX.startBGM('overworld');
-      showModalResult(
-        `🏅 ชนะยิมลีดเดอร์ ${b.trainerName}!`,
-        Game.party[b.playerIdx],
-        `คุณคว้าเข็มกลัดยิม (รวม ${Game.badges} เหรียญตรา) และโบนัส +150 เหรียญ!`
-      );
+      const activePoke = Game.party[b.playerIdx];
       b.active = false;
       b.turnBusy = false;
+      if (leveledUp && canPokemonEvolveNow(activePoke)) {
+        requestEvolvePartyMember(b.playerIdx);
+      } else {
+        showModalResult(
+          `🏅 ชนะยิมลีดเดอร์ ${b.trainerName}!`,
+          activePoke,
+          `คุณคว้าเข็มกลัดยิม (รวม ${Game.badges} เหรียญตรา) และโบนัส +160 เหรียญ!`
+        );
+      }
     } else {
+      const activePoke = Game.party[b.playerIdx];
       b.active = false;
       b.turnBusy = false;
       SFX.startBGM('overworld');
-      setTimeout(() => switchScreen('world'), 1100);
+      if (leveledUp && canPokemonEvolveNow(activePoke)) {
+        requestEvolvePartyMember(b.playerIdx);
+      } else {
+        setTimeout(() => switchScreen('world'), 1000);
+      }
     }
   }, 1350);
 }
@@ -1467,7 +1701,6 @@ function bindUIControls() {
     });
   });
 
-  // BGM & SFX Toggle Buttons
   const bgmBtn = document.getElementById('btnToggleBgm');
   if (bgmBtn) {
     bgmBtn.addEventListener('click', () => {
@@ -1486,7 +1719,6 @@ function bindUIControls() {
     });
   }
 
-  // Continuous Hold D-Pad for Mobile & Touch
   document.querySelectorAll('[data-dir]').forEach(btn => {
     const dir = btn.dataset.dir;
     const startHold = e => {
@@ -1520,7 +1752,6 @@ function bindUIControls() {
   const resetBtn = document.getElementById('btnResetSave');
   if (resetBtn) resetBtn.addEventListener('click', resetGameSave);
 
-  // 4 Battle Main Commands
   document.getElementById('cmdFightBtn').addEventListener('click', () => setCommandMenuMode('fight'));
   document.getElementById('cmdBagBtn').addEventListener('click', () => setCommandMenuMode('bag'));
   document.getElementById('cmdPokeBtn').addEventListener('click', () => setCommandMenuMode('pokemon'));
@@ -1609,6 +1840,17 @@ function openDexInspector(pokeId) {
   const modal = document.getElementById('pixelModal');
   const box = document.getElementById('pixelModalContent');
 
+  // Evolution Info HTML
+  let evoInfoHtml = `<div style="font-size:0.8rem;color:#80ed99;margin-bottom:10px;">🌟 ร่างสมบูรณ์สูงสุดแล้ว</div>`;
+  if (t.evolvesTo) {
+    const targets = Array.isArray(t.evolvesTo) ? t.evolvesTo : [t.evolvesTo];
+    const targetNames = targets.map(id => {
+      const nextP = POKEMON_DB.find(x => x.id === id);
+      return nextP ? `#${String(nextP.id).padStart(2, '0')} ${nextP.name.split(' ')[0]}` : '';
+    }).join(' / ');
+    evoInfoHtml = `<div style="font-size:0.82rem;color:#ffd166;margin-bottom:10px;">✨ วิวัฒนาการที่ Lv.${t.evolveLevel} ➔ <b>${targetNames}</b></div>`;
+  }
+
   box.innerHTML = `
     <div style="display:flex;justify-content:center;gap:24px;margin-bottom:12px;">
       <div>
@@ -1625,7 +1867,8 @@ function openDexInspector(pokeId) {
       <span style="background:${tInfo.color};padding:2px 8px;font-weight:700;font-size:0.8rem;">ธาตุ: ${tInfo.label}</span>
       <span style="background:#3a4466;padding:2px 8px;font-weight:700;font-size:0.8rem;">HP:${t.baseHp} ATK:${t.baseAtk} SPD:${t.baseSpd}</span>
     </div>
-    <p style="font-size:0.86rem;color:#d8e2dc;margin:8px 0 14px;">${t.desc}</p>
+    ${evoInfoHtml}
+    <p style="font-size:0.86rem;color:#d8e2dc;margin:6px 0 14px;">${t.desc}</p>
     <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
       <button class="px-btn" style="background:#7209b7;border-color:#f72585;" onclick="SFX.playPokemonCry(${t.id})">🔊 ฟังเสียงร้อง</button>
       <button class="px-btn btn-gold" onclick="closeModalAndFightId(${t.id})">⚔️ ทดสอบสู้ & จับตัวนี้!</button>
@@ -1666,6 +1909,18 @@ function renderAllUI() {
     partyEl.innerHTML = Game.party.map((p, idx) => {
       const hpPct = Math.max(0, Math.round((p.hp / p.maxHp) * 100));
       const hpColor = hpPct > 50 ? '#38b000' : hpPct > 20 ? '#f5b000' : '#e63946';
+      const tmpl = getEvolutionTemplateFor(p);
+      const readyEvo = canPokemonEvolveNow(p);
+
+      let evoActionHtml = '';
+      if (readyEvo) {
+        evoActionHtml = `<button class="evolve-mini-btn" onclick="event.stopPropagation(); requestEvolvePartyMember(${idx})">✨ วิวัฒนาการ!</button>`;
+      } else if (tmpl) {
+        evoActionHtml = `<span style="color:#ffd166;">ร่างถัดไป Lv.${tmpl.evolveLevel}</span>`;
+      } else {
+        evoActionHtml = `<span style="color:#80ed99;">ร่างสูงสุด</span>`;
+      }
+
       return `
         <div class="party-slot ${idx === 0 ? 'lead-slot' : ''}" onclick="makeLeadPokemon(${idx})" title="แตะเพื่อฟังเสียงร้อง / ตั้งเป็นตัวนำทีม">
           <div>${getPokemonPixelImgHTML(p.code, p.isShiny, 3)}</div>
@@ -1677,9 +1932,9 @@ function renderAllUI() {
             <div class="hp-track" style="margin:4px 0;">
               <div style="width:${hpPct}%;height:100%;background:${hpColor};"></div>
             </div>
-            <div style="font-size:0.72rem;color:#adb5bd;display:flex;justify-content:space-between;">
+            <div style="font-size:0.71rem;color:#adb5bd;display:flex;justify-content:space-between;align-items:center;">
               <span>HP ${p.hp}/${p.maxHp}</span>
-              <span>EXP ${p.exp}/${p.nextExp}</span>
+              ${evoActionHtml}
             </div>
           </div>
         </div>
@@ -1698,9 +1953,9 @@ function renderAllUI() {
           <div style="margin:6px 0;">
             ${getPokemonPixelImgHTML(p.code, Game.dexShinyPreview, 5)}
           </div>
-          <div style="font-weight:700;font-size:0.84rem;">#${String(p.id).padStart(2, '0')} ${p.name.split(' ')[0]}</div>
-          <span style="background:${tInfo.color};font-size:0.7rem;padding:1px 6px;margin-top:4px;font-weight:700;">
-            ${tInfo.label}
+          <div style="font-weight:700;font-size:0.82rem;">#${String(p.id).padStart(2, '0')} ${p.name.split(' ')[0]}</div>
+          <span style="background:${tInfo.color};font-size:0.68rem;padding:1px 6px;margin-top:4px;font-weight:700;">
+            ${tInfo.label} ${p.evolvesTo ? `• Evo Lv.${p.evolveLevel}` : '• MAX'}
           </span>
         </div>
       `;
@@ -1714,4 +1969,7 @@ window.switchActivePokemon = switchActivePokemon;
 window.buyShopItem = buyShopItem;
 window.makeLeadPokemon = makeLeadPokemon;
 window.openDexInspector = openDexInspector;
+window.requestEvolvePartyMember = requestEvolvePartyMember;
+window.useRareCandyOnLead = useRareCandyOnLead;
+window.triggerManualEvolveLead = triggerManualEvolveLead;
 window.SFX = SFX;
