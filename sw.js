@@ -1,4 +1,4 @@
-const CACHE_NAME = 'poke-pixel-rpg-v7';
+const CACHE_NAME = 'poke-pixel-rpg-v8';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',

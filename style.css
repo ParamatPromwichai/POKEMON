@@ -864,17 +864,43 @@ html, body {
 }
 
 /* =========================================
-   VIEW 4: DEDICATED SHOP PAGE (POKÉ MART)
+   VIEW 4: DEDICATED GACHA & SHOP PAGE
    ========================================= */
-.shop-cards-grid {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
+.gacha-cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(295px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.gacha-machine-card {
+  background: linear-gradient(180deg, #1b1f36 0%, #141824 100%);
+  border: 2px solid #ffd166;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+  box-shadow: 0 3px 0 #0b0c14;
+  position: relative;
+}
+
+.gacha-capsule-anim {
+  display: inline-block;
+  animation: capsuleShake 0.28s infinite alternate steps(2);
+}
+
+@keyframes capsuleShake {
+  0% { transform: rotate(-14deg) scale(1.05); }
+  100% { transform: rotate(14deg) scale(1.18); }
+}
+
+.shop-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(285px, 1fr));
   gap: 8px;
   align-content: start;
-  padding-right: 4px;
+  padding-bottom: 6px;
 }
 
 .shop-item-card {
@@ -1132,6 +1158,7 @@ html, body {
   }
 
   .team-cards-grid,
+  .gacha-cards-grid,
   .shop-cards-grid {
     grid-template-columns: 1fr;
   }

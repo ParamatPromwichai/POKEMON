@@ -110,6 +110,18 @@ const SFX = {
     notes.forEach((f, i) => this.beep(f, 'sine', 0.1, i * 0.065, 0.12));
   },
 
+  gachaTick(stepIdx = 0) {
+    const freq = 360 + stepIdx * 65;
+    this.beep(freq, 'triangle', 0.06, 0, 0.1);
+  },
+
+  gachaJackpot(isHighRarity = false) {
+    const notes = isHighRarity
+      ? [523.25, 659.25, 783.99, 1046.5, 1318.51, 1567.98, 2093]
+      : [440, 554.37, 659.25, 880, 1046.5];
+    notes.forEach((f, i) => this.beep(f, 'square', 0.12, i * 0.075, 0.12));
+  },
+
   // --- Special Rarity Encounter Sound Effects! ---
   playRarityAlert(rarity) {
     if (!this.sfxEnabled) return;
@@ -377,29 +389,45 @@ const SFX = {
 };
 
 // ============================================================================
-// WEIGHTED RARITY SPAWNER (ตัวแรร์ยิ่งหายาก!)
+// BALANCED WILD SPAWNER (พุ่มไม้จะเจอเฉพาะร่าง 1–2 ส่วนร่าง 3–5 ต้องฝึกวิวัฒนาการเอง!)
 // ============================================================================
+const WILD_SHINY_RATE = 0.05; // โอกาสเจอ Shiny ในป่าธรรมชาติ 5% (1 ใน 20 ตัว)
+const SHINY_STAT_MULT = 1.15; // โปเกมอน Shiny มีสเตตัสทุกด้านสูงกว่าตัวปกติ +15%!
+
 function pickWildPokemonByRarity() {
-  // First roll rarity tier by weight (Common 55%, Rare 26%, Epic 12%, Legendary 5%, Mythic 2%)
-  const tiers = Object.values(RARITY_TIERS);
-  const totalWeight = tiers.reduce((sum, t) => sum + t.spawnWeight, 0);
+  const leadLv = Game.party[0] ? Game.party[0].level : 5;
+  const allowStage2 = (Game.badges >= 1 || leadLv >= 10) && Math.random() < 0.22;
+  const maxWildStage = allowStage2 ? 2 : 1;
+
+  // Weighted rarity roll for wild grass (Common 58%, Rare 27%, Epic 12%, Legendary 3%)
+  const wildWeights = [
+    { id: 'common', weight: 58 },
+    { id: 'rare', weight: 27 },
+    { id: 'epic', weight: 12 },
+    { id: 'legendary', weight: Game.badges >= 1 ? 3 : 1 }
+  ];
+  const totalWeight = wildWeights.reduce((sum, t) => sum + t.weight, 0);
   let r = Math.random() * totalWeight;
   let chosenRarity = 'common';
-  for (const t of tiers) {
-    r -= t.spawnWeight;
+  for (const t of wildWeights) {
+    r -= t.weight;
     if (r <= 0) {
       chosenRarity = t.id;
       break;
     }
   }
-  const pool = POKEMON_DB.filter(p => p.rarity === chosenRarity);
-  if (pool.length === 0) return POKEMON_DB[0];
+
+  let pool = POKEMON_DB.filter(p => p.rarity === chosenRarity && p.stage <= maxWildStage);
+  if (pool.length === 0) {
+    pool = POKEMON_DB.filter(p => p.stage === 1 && p.rarity !== 'mythic');
+  }
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-// --- Create a Pokemon Instance with RPG Stats ---
+// --- Create a Pokemon Instance with RPG Stats (Shiny gets +15% ALL STATS!) ---
 function createPokemonInstance(template, level = 5, isShiny = false) {
-  const mult = 1 + (level - 1) * 0.14;
+  const shinyBonus = isShiny ? SHINY_STAT_MULT : 1.0;
+  const mult = (1 + (level - 1) * 0.14) * shinyBonus;
   const maxHp = Math.floor(template.baseHp * mult);
   return {
     uid: Date.now() + Math.random(),
@@ -424,20 +452,32 @@ function createPokemonInstance(template, level = 5, isShiny = false) {
   };
 }
 
+function recalcPokemonStats(pokeInst, healFull = false) {
+  const tmpl = POKEMON_DB.find(t => t.id === pokeInst.id) || POKEMON_DB[0];
+  const shinyBonus = pokeInst.isShiny ? SHINY_STAT_MULT : 1.0;
+  const mult = (1 + (pokeInst.level - 1) * 0.14) * shinyBonus;
+  const oldMax = pokeInst.maxHp || 1;
+  pokeInst.maxHp = Math.floor(tmpl.baseHp * mult);
+  pokeInst.hp = healFull ? pokeInst.maxHp : Math.min(pokeInst.maxHp, Math.max(1, pokeInst.hp + (pokeInst.maxHp - oldMax)));
+  pokeInst.atk = Math.floor(tmpl.baseAtk * mult);
+  pokeInst.def = Math.floor(tmpl.baseDef * mult);
+  pokeInst.spd = Math.floor(tmpl.baseSpd * mult);
+}
+
 // --- Global Game State ---
 const Game = {
-  coins: 450,
+  coins: 250,
   badges: 0,
   party: [],
   pcBox: [],
   pokedex: {},
   bag: {
-    pokeball:   { name: 'โปเกบอล (Poké Ball)', count: 12, rate: 1.0, price: 25, kind: 'ball' },
-    greatball:  { name: 'เกรทบอล (Great Ball)', count: 4,  rate: 1.5, price: 60, kind: 'ball' },
-    ultraball:  { name: 'อัลตร้าบอล (Ultra Ball)', count: 2, rate: 2.1, price: 110, kind: 'ball' },
-    masterball: { name: 'มาสเตอร์บอล (Master)', count: 1, rate: 99.0, price: 300, kind: 'ball' },
-    potion:     { name: 'ยารักษา (Potion +35HP)', count: 5, heal: 35, price: 30, kind: 'heal' },
-    superpotion:{ name: 'ซูเปอร์โพชั่น (+90HP)', count: 2, heal: 90, price: 70, kind: 'heal' }
+    pokeball:   { name: 'โปเกบอล (Poké Ball)', count: 10, rate: 1.0, price: 25, kind: 'ball' },
+    greatball:  { name: 'เกรทบอล (Great Ball)', count: 3,  rate: 1.6, price: 65, kind: 'ball' },
+    ultraball:  { name: 'อัลตร้าบอล (Ultra Ball)', count: 1, rate: 2.3, price: 130, kind: 'ball' },
+    masterball: { name: 'มาสเตอร์บอล (Master)', count: 0, rate: 99.0, price: 600, kind: 'ball' },
+    potion:     { name: 'ยารักษา (Potion +45HP)', count: 4, heal: 45, price: 30, kind: 'heal' },
+    superpotion:{ name: 'ซูเปอร์โพชั่น (+120HP)', count: 1, heal: 120, price: 80, kind: 'heal' }
   },
   battle: {
     active: false,
@@ -701,12 +741,7 @@ function completeEvolutionTransform(pokeInst, nextTemplate) {
   pokeInst.maxStage = nextTemplate.maxStage;
   pokeInst.moves = [...nextTemplate.moves];
 
-  const mult = 1 + (pokeInst.level - 1) * 0.14;
-  pokeInst.maxHp = Math.floor(nextTemplate.baseHp * mult);
-  pokeInst.hp = pokeInst.maxHp;
-  pokeInst.atk = Math.floor(nextTemplate.baseAtk * mult);
-  pokeInst.def = Math.floor(nextTemplate.baseDef * mult);
-  pokeInst.spd = Math.floor(nextTemplate.baseSpd * mult);
+  recalcPokemonStats(pokeInst, true);
 
   if (!Game.pokedex[nextTemplate.id]) {
     Game.pokedex[nextTemplate.id] = { count: 0, shiny: false };
@@ -738,7 +773,7 @@ function completeEvolutionTransform(pokeInst, nextTemplate) {
       <div class="evo-complete-burst">${getPokemonPixelImgHTML(nextTemplate.code, pokeInst.isShiny, 7)}</div>
     </div>
     <h3 style="color:#ffd166;margin-bottom:6px;">
-      ${oldName} ➔ 「${nextTemplate.name}」 ${pokeInst.isShiny ? '✨' : ''}
+      ${oldName} ➔ 「${nextTemplate.name}」 ${pokeInst.isShiny ? '✨ (SHINY +15% สเตตัส)' : ''}
     </h3>
     ${nextEvoHint}
     <p style="font-size:0.84rem;color:#c0cbdc;margin-bottom:14px;">
@@ -755,32 +790,7 @@ window.finishEvolutionModal = function () {
 };
 
 function useRareCandyOnLead() {
-  const lead = Game.party[0];
-  if (!lead) return;
-  if (Game.coins < 40) {
-    SFX.hit(0.5);
-    alert('🪙 เหรียญไม่พอ! (ต้องการ 40 เหรียญสำหรับแคนดี้ +1 เลเวล)');
-    return;
-  }
-  Game.coins -= 40;
-  lead.level++;
-  lead.nextExp = lead.level * 35;
-  const tmpl = POKEMON_DB.find(t => t.id === lead.id) || POKEMON_DB[0];
-  const mult = 1 + (lead.level - 1) * 0.14;
-  lead.maxHp = Math.floor(tmpl.baseHp * mult);
-  lead.hp = lead.maxHp;
-  lead.atk = Math.floor(tmpl.baseAtk * mult);
-  lead.def = Math.floor(tmpl.baseDef * mult);
-  lead.spd = Math.floor(tmpl.baseSpd * mult);
-
-  SFX.levelUp();
-  saveGameData();
-  renderAllUI();
-  if (Game.battle.active) updateBattleHUDs();
-
-  if (canPokemonEvolveNow(lead)) {
-    setTimeout(() => requestEvolvePartyMember(0), 450);
-  }
+  feedCandyToPartyIdx(0);
 }
 
 function triggerManualEvolveLead() {
@@ -792,15 +802,16 @@ function triggerManualEvolveLead() {
     alert(`🐾 ${lead.name} อยู่ในร่างสูงสุด (${lead.stage}/${lead.maxStage}) แล้ว!`);
     return;
   }
-  if (Game.coins < 80) {
+  if (Game.coins < 150) {
     SFX.hit(0.5);
-    alert('🪙 เหรียญไม่พอ! (ต้องการ 80 เหรียญสำหรับหินวิวัฒนาการทันที)');
+    alert('🪙 เหรียญไม่พอ! (ต้องการ 150 เหรียญสำหรับหินวิวัฒนาการตัวนำทันที)');
     return;
   }
-  Game.coins -= 80;
+  Game.coins -= 150;
   if (lead.level < (tmpl.evolveLevel || 7)) {
     lead.level = tmpl.evolveLevel || 7;
   }
+  recalcPokemonStats(lead, true);
   saveGameData();
   renderAllUI();
   requestEvolvePartyMember(0);
@@ -933,7 +944,7 @@ function spawnOverworldWild() {
   const template = pickWildPokemonByRarity();
   const avgLv = Game.party[0] ? Game.party[0].level : 5;
   const level = Math.max(3, avgLv + Math.floor(Math.random() * 4) - 2);
-  const isShiny = Math.random() < 0.14;
+  const isShiny = Math.random() < WILD_SHINY_RATE;
 
   Overworld.wildEntities.push({
     template,
@@ -1002,7 +1013,7 @@ function updateOverworld(ts) {
         p.tx = null; p.ty = null;
         const t = pickWildPokemonByRarity();
         const lv = Math.max(3, (Game.party[0]?.level || 5) + Math.floor(Math.random() * 3) - 1);
-        startWildBattle(t, lv, Math.random() < 0.14);
+        startWildBattle(t, lv, Math.random() < WILD_SHINY_RATE);
         return;
       }
     }
@@ -1692,14 +1703,7 @@ function grantExpToActive(amount) {
     p.exp -= p.nextExp;
     p.level++;
     p.nextExp = p.level * 35;
-    const template = POKEMON_DB.find(t => t.id === p.id) || POKEMON_DB[0];
-    const mult = 1 + (p.level - 1) * 0.14;
-    const oldMax = p.maxHp;
-    p.maxHp = Math.floor(template.baseHp * mult);
-    p.hp += (p.maxHp - oldMax);
-    p.atk = Math.floor(template.baseAtk * mult);
-    p.def = Math.floor(template.baseDef * mult);
-    p.spd = Math.floor(template.baseSpd * mult);
+    recalcPokemonStats(p, false);
     leveled = true;
   }
   if (leveled) SFX.levelUp();
@@ -1752,6 +1756,166 @@ function setBattleDialog(txt) {
 }
 
 // ============================================================================
+// POKÉ GACHA CAPSULE SYSTEM (สุ่มไข่โปเกมอนด้วยเหรียญ + โอกาสออก ✨SHINY สูง!)
+// ============================================================================
+const GACHA_TIERS = {
+  basic: {
+    key: 'basic',
+    title: '🟢 ตู้สุ่มไข่ฝึกหัด (Basic Capsule)',
+    price: 120,
+    ballCode: 'pokeball',
+    borderColor: '#80ed99',
+    shinyRate: 0.08, // โอกาสออก Shiny 8%
+    maxStageAllowed: 1,
+    weights: [
+      { rarity: 'common', weight: 62 },
+      { rarity: 'rare',   weight: 28 },
+      { rarity: 'epic',   weight: 10 }
+    ],
+    desc: 'สุ่มโปเกมอนร่างต้น (★ทั่วไป 62% / ★★หายาก 28% / ★★★Epic 10%) • โอกาสออก ✨Shiny 8%'
+  },
+  epic: {
+    key: 'epic',
+    title: '🟣 ตู้สุ่มมหากาพย์ (Hyper Capsule)',
+    price: 300,
+    ballCode: 'ultraball',
+    borderColor: '#c77dff',
+    shinyRate: 0.16, // โอกาสออก Shiny 16%
+    maxStageAllowed: 2,
+    weights: [
+      { rarity: 'rare',      weight: 50 },
+      { rarity: 'epic',      weight: 38 },
+      { rarity: 'legendary', weight: 12 }
+    ],
+    desc: 'การันตี ★★หายาก ขึ้นไป! (★★ 50% / ★★★Epic 38% / ★★★★ตำนาน 12%) • โอกาสออก ✨Shiny 16%'
+  },
+  mythic: {
+    key: 'mythic',
+    title: '🌟 ตู้สุ่มเทพมายา & ไชนี่ (Master Gacha)',
+    price: 680,
+    ballCode: 'masterball',
+    borderColor: '#ff70a6',
+    shinyRate: 0.30, // โอกาสออก Shiny สูงถึง 30%!
+    maxStageAllowed: 3,
+    weights: [
+      { rarity: 'epic',      weight: 48 },
+      { rarity: 'legendary', weight: 36 },
+      { rarity: 'mythic',    weight: 16 }
+    ],
+    desc: 'การันตี ★★★Epic ขึ้นไป! มีโอกาสได้สายพันธุ์ 5 ร่าง & เทพมายา • โอกาสออก ✨Shiny สูงถึง 30%!'
+  }
+};
+
+function rollGachaCapsule(tierKey) {
+  if (Game.evolvingNow) return;
+  const tier = GACHA_TIERS[tierKey];
+  if (!tier) return;
+
+  if (Game.coins < tier.price) {
+    SFX.hit(0.5);
+    alert(`🪙 เหรียญไม่พอสำหรับสุ่ม ${tier.title}!\n(ต้องการ ${tier.price} 🪙 แต่คุณมี ${Game.coins} 🪙)`);
+    return;
+  }
+
+  Game.coins -= tier.price;
+  saveGameData();
+  renderAllUI();
+
+  // Roll rarity according to capsule weights
+  const totalW = tier.weights.reduce((s, w) => s + w.weight, 0);
+  let roll = Math.random() * totalW;
+  let pickedRarity = tier.weights[0].rarity;
+  for (const w of tier.weights) {
+    roll -= w.weight;
+    if (roll <= 0) {
+      pickedRarity = w.rarity;
+      break;
+    }
+  }
+
+  let pool = POKEMON_DB.filter(p => p.rarity === pickedRarity && p.stage <= tier.maxStageAllowed);
+  if (pool.length === 0) {
+    pool = POKEMON_DB.filter(p => p.rarity === pickedRarity);
+  }
+  if (pool.length === 0) {
+    pool = POKEMON_DB.filter(p => p.stage === 1);
+  }
+
+  const chosenTemplate = pool[Math.floor(Math.random() * pool.length)];
+  const isShiny = Math.random() < tier.shinyRate;
+  const baseLv = Math.max(5, (Game.party[0]?.level || 5));
+  const hatchedPoke = createPokemonInstance(chosenTemplate, baseLv, isShiny);
+
+  // Open Modal with Gacha Capsule Shaking Animation!
+  Game.evolvingNow = true;
+  const modal = document.getElementById('pixelModal');
+  const box = document.getElementById('pixelModalContent');
+  modal.classList.add('open');
+
+  box.innerHTML = `
+    <h2 style="color:#ffd166;margin-bottom:8px;">🎰 กำลังหมุนตู้กาชา...</h2>
+    <div style="font-size:0.85rem;color:#c0cbdc;margin-bottom:10px;">${tier.title}</div>
+    <div class="evo-stage-box" style="border-color:${tier.borderColor};">
+      <div class="gacha-capsule-anim">${getPokeballPixelImgHTML(tier.ballCode, 6)}</div>
+    </div>
+    <p style="font-size:0.9rem;color:#80ed99;font-weight:700;">แคปซูลกำลังสั่น... ลุ้นตัวแรร์ & ร่าง ✨Shiny!</p>
+  `;
+
+  let step = 0;
+  const totalSteps = 8;
+  const spinTimer = setInterval(() => {
+    step++;
+    SFX.gachaTick(step);
+    if (step >= totalSteps) {
+      clearInterval(spinTimer);
+      revealGachaPrize(hatchedPoke, tier);
+    }
+  }, 190);
+}
+
+function revealGachaPrize(hatchedPoke, tier) {
+  Game.evolvingNow = false;
+  registerPokemonOwned(hatchedPoke, true);
+  renderAllUI();
+
+  const rInfo = RARITY_TIERS[hatchedPoke.rarity] || RARITY_TIERS.common;
+  const tInfo = TYPE_INFO[hatchedPoke.type];
+  const isHigh = hatchedPoke.rarity === 'mythic' || hatchedPoke.rarity === 'legendary' || hatchedPoke.isShiny;
+
+  SFX.gachaJackpot(isHigh);
+  if (hatchedPoke.isShiny) {
+    setTimeout(() => SFX.shinySparkle(), 380);
+  }
+  setTimeout(() => SFX.playPokemonCry(hatchedPoke.id), 680);
+
+  const box = document.getElementById('pixelModalContent');
+  box.innerHTML = `
+    <div style="margin-bottom:6px;">
+      <span style="background:${rInfo.color};border:2px solid ${rInfo.border};padding:2px 8px;font-size:0.78rem;font-weight:700;">
+        ${rInfo.name} • ร่างที่ ${hatchedPoke.stage}/${hatchedPoke.maxStage}
+      </span>
+    </div>
+    <h2 style="color:${hatchedPoke.isShiny ? '#ffea00' : '#80ed99'};margin-bottom:6px;">
+      ${hatchedPoke.isShiny ? '✨ JACKPOT!! สุ่มได้ร่าง SHINY สีพิเศษ!! ✨' : '🎊 เปิดแคปซูลกาชาสำเร็จ!'}
+    </h2>
+    <div class="evo-stage-box" style="border-color:${hatchedPoke.isShiny ? '#ffea00' : rInfo.border};">
+      <div class="evo-complete-burst">${getPokemonPixelImgHTML(hatchedPoke.code, hatchedPoke.isShiny, 7)}</div>
+    </div>
+    <h3 style="color:#ffd166;margin-bottom:4px;">
+      #${String(hatchedPoke.id).padStart(2, '0')} ${hatchedPoke.name} (Lv.${hatchedPoke.level}) ${hatchedPoke.isShiny ? '✨' : ''}
+    </h3>
+    ${hatchedPoke.isShiny ? `<div style="color:#ffea00;font-size:0.8rem;font-weight:700;margin-bottom:4px;">🌟 โบนัสร่าง Shiny: ค่าสเตตัสทุกด้าน +15% ถาวร!</div>` : ''}
+    <div style="font-size:0.8rem;color:#c0cbdc;margin-bottom:12px;">
+      ธาตุ${tInfo.label} • HP ${hatchedPoke.maxHp} • ATK ${hatchedPoke.atk} • DEF ${hatchedPoke.def} • SPD ${hatchedPoke.spd}
+    </div>
+    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+      <button class="px-btn btn-gold" onclick="rollGachaCapsule('${tier.key}')">🎰 สุ่มอีกครั้ง (${tier.price}🪙)</button>
+      <button class="px-btn btn-green" onclick="document.getElementById('pixelModal').classList.remove('open')">✅ รับเข้าทีม</button>
+    </div>
+  `;
+}
+
+// ============================================================================
 // UI CONTROLS, CONTINUOUS MOBILE D-PAD, RARITY FILTER & MODALS
 // ============================================================================
 function setDexRarityFilter(rarityKey) {
@@ -1769,7 +1933,7 @@ function bindUIControls() {
       if (target === 'battle' && !Game.battle.active) {
         const t = pickWildPokemonByRarity();
         const lv = Math.max(3, (Game.party[0]?.level || 5));
-        startWildBattle(t, lv, Math.random() < 0.14);
+        startWildBattle(t, lv, Math.random() < WILD_SHINY_RATE);
       } else {
         if (target === 'world') SFX.startBGM('overworld');
         switchScreen(target);
@@ -1790,7 +1954,7 @@ function bindUIControls() {
   if (sfxBtn) {
     sfxBtn.addEventListener('click', () => {
       const on = SFX.toggleSFX();
-      sfxBtn.textContent = on ? '🔊 เอฟเฟกต์: เปิด' : '🔈 เอฟเฟกต์: ปิด';
+      sfxBtn.textContent = on ? '🔊 เสียง: เปิด' : '🔈 เสียง: ปิด';
       sfxBtn.style.opacity = on ? '1' : '0.65';
     });
   }
@@ -1819,7 +1983,7 @@ function bindUIControls() {
   document.getElementById('btnWildEncounter').addEventListener('click', () => {
     const t = pickWildPokemonByRarity();
     const lv = Math.max(3, (Game.party[0]?.level || 5) + Math.floor(Math.random() * 3) - 1);
-    startWildBattle(t, lv, Math.random() < 0.15);
+    startWildBattle(t, lv, Math.random() < WILD_SHINY_RATE);
   });
 
   document.getElementById('btnGymChallenge').addEventListener('click', startGymBattle);
@@ -1894,21 +2058,15 @@ function makeLeadPokemon(idx) {
 function feedCandyToPartyIdx(idx) {
   const p = Game.party[idx];
   if (!p) return;
-  if (Game.coins < 40) {
+  if (Game.coins < 60) {
     SFX.hit(0.5);
-    alert('🪙 เหรียญไม่พอ! (ต้องการ 40 เหรียญสำหรับแคนดี้ +1 เลเวล)');
+    alert('🪙 เหรียญไม่พอ! (ต้องการ 60 เหรียญสำหรับแคนดี้ +1 เลเวล)');
     return;
   }
-  Game.coins -= 40;
+  Game.coins -= 60;
   p.level++;
   p.nextExp = p.level * 35;
-  const tmpl = POKEMON_DB.find(t => t.id === p.id) || POKEMON_DB[0];
-  const mult = 1 + (p.level - 1) * 0.14;
-  p.maxHp = Math.floor(tmpl.baseHp * mult);
-  p.hp = p.maxHp;
-  p.atk = Math.floor(tmpl.baseAtk * mult);
-  p.def = Math.floor(tmpl.baseDef * mult);
-  p.spd = Math.floor(tmpl.baseSpd * mult);
+  recalcPokemonStats(p, true);
 
   SFX.levelUp();
   saveGameData();
@@ -1942,7 +2100,6 @@ function moveBoxToParty(boxIdx) {
     Game.pcBox.splice(boxIdx, 1);
     Game.party.push(boxPoke);
   } else {
-    // Swap with the last party slot (slot #6)
     const lastParty = Game.party.pop();
     Game.pcBox.splice(boxIdx, 1, lastParty);
     Game.party.push(boxPoke);
@@ -1974,7 +2131,7 @@ function showModalResult(title, pokeInst, subtitle) {
       ${getPokemonPixelImgHTML(pokeInst.code, pokeInst.isShiny, 7)}
     </div>
     <h2 style="color:#ffd166;margin-bottom:6px;">${title}</h2>
-    <h3 style="margin-bottom:6px;">${pokeInst.name} (Lv.${pokeInst.level}) ${pokeInst.isShiny ? '✨' : ''}</h3>
+    <h3 style="margin-bottom:6px;">${pokeInst.name} (Lv.${pokeInst.level}) ${pokeInst.isShiny ? '✨ (SHINY +15%)' : ''}</h3>
     <p style="font-size:0.9rem;color:#c0cbdc;margin-bottom:14px;">${subtitle}</p>
     <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
       <button class="px-btn btn-green" onclick="closeModalToWorld()">🗺️ กลับสู่แมพ</button>
@@ -1984,7 +2141,7 @@ function showModalResult(title, pokeInst, subtitle) {
   modal.classList.add('open');
 }
 
-// --- Pokédex Inspector with Mystery Silhouettes for Locked Pokémon & 3-to-5 Stage Chain! ---
+// --- Pokédex Inspector: Jumps to Map to Hunt instead of Free Cheat Battle! ---
 function openDexInspector(pokeId) {
   const t = POKEMON_DB.find(p => p.id === pokeId);
   if (!t) return;
@@ -2000,8 +2157,6 @@ function openDexInspector(pokeId) {
   const modal = document.getElementById('pixelModal');
   const box = document.getElementById('pixelModalContent');
 
-  // Render full visual chain (Stage 1 -> Stage 2 -> Stage 3 -> Stage 4 -> Stage 5)
-  // Any stage not yet unlocked in Game.pokedex appears as a dark silhouette!
   const chainList = (t.chainIds || [t.id]).map(cid => POKEMON_DB.find(x => x.id === cid)).filter(Boolean);
   const chainHtml = `
     <div style="background:#141824;border:2px solid #5a6988;padding:8px;margin:8px 0;">
@@ -2026,6 +2181,10 @@ function openDexInspector(pokeId) {
     </div>
   `;
 
+  const howToObtainHint = t.stage === 1
+    ? `🌿 โปเกมอนร่างที่ 1: ออกเดินสำรวจในพุ่มไม้บนแผนที่โลก หรือสุ่มจากตู้กาชาเพื่อจับเข้าทีมได้เลย!`
+    : `🔥 โปเกมอนร่างวิวัฒนาการ (ร่างที่ ${t.stage}/${t.maxStage}): ไม่เกิดในพุ่มไม้ทั่วไป! ต้องจับร่างต้นมาฝึกเลเวลอัปเพื่อวิวัฒนาการ (หรือลุ้นจากตู้กาชาระดับสูง)`;
+
   if (!isUnlocked) {
     box.innerHTML = `
       <div style="margin-bottom:6px;">
@@ -2045,15 +2204,17 @@ function openDexInspector(pokeId) {
         <span style="background:#3a4466;padding:2px 8px;font-weight:700;font-size:0.78rem;">ความหายาก: ${rInfo.short}</span>
       </div>
       ${chainHtml}
-      <p style="font-size:0.82rem;color:#8b9bb4;margin:6px 0 12px;">
-        💡 วิธีปลดล็อก: ออกสำรวจพุ่มไม้เพื่อจับโปเกมอนตัวนี้ หรือฝึกฝนร่างก่อนหน้าให้วิวัฒนาการมาถึงร่างที่ ${t.stage}/${t.maxStage}!
+      <p style="font-size:0.8rem;color:#ffd166;margin:6px 0 12px;">
+        ${howToObtainHint}
       </p>
       <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
-        <button class="px-btn btn-gold" onclick="closeModalAndFightId(${t.id})">⚔️ ออกตามล่าเงาปริศนาตัวนี้!</button>
+        <button class="px-btn btn-green" onclick="huntPokemonOnMap(${t.id})">🗺️ ไปเดินสำรวจหาในแผนที่โลก!</button>
+        <button class="px-btn btn-gold" onclick="goToGachaFromDex()">🎰 ไปสุ่มตู้กาชา</button>
         <button class="px-btn" onclick="document.getElementById('pixelModal').classList.remove('open')">ปิด</button>
       </div>
     `;
   } else {
+    const shinyUnlocked = Boolean(Game.pokedex[t.id]?.shiny);
     box.innerHTML = `
       <div style="margin-bottom:6px;">
         <span style="background:${rInfo.color};border:2px solid ${rInfo.border};padding:2px 8px;font-size:0.76rem;font-weight:700;">
@@ -2067,7 +2228,9 @@ function openDexInspector(pokeId) {
         </div>
         <div>
           ${getPokemonPixelImgHTML(t.code, true, 5)}
-          <div style="font-size:0.74rem;margin-top:3px;color:#ffd166;">✨ Shiny</div>
+          <div style="font-size:0.74rem;margin-top:3px;color:#ffd166;">
+            ✨ Shiny ${shinyUnlocked ? '(ครอบครองแล้ว!)' : '(+15% สเตตัส)'}
+          </div>
         </div>
       </div>
       <h2 style="color:#ffd166;font-size:1.15rem;">#${String(t.id).padStart(2, '0')} ${t.name}</h2>
@@ -2076,10 +2239,12 @@ function openDexInspector(pokeId) {
         <span style="background:#3a4466;padding:2px 8px;font-weight:700;font-size:0.78rem;">HP:${t.baseHp} ATK:${t.baseAtk} SPD:${t.baseSpd}</span>
       </div>
       ${chainHtml}
-      <p style="font-size:0.82rem;color:#d8e2dc;margin:6px 0 12px;">${t.desc}</p>
+      <p style="font-size:0.8rem;color:#d8e2dc;margin:4px 0 6px;">${t.desc}</p>
+      <p style="font-size:0.76rem;color:#80ed99;margin-bottom:10px;">${howToObtainHint}</p>
       <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
         <button class="px-btn" style="background:#7209b7;border-color:#f72585;" onclick="SFX.playPokemonCry(${t.id})">🔊 เสียงร้อง</button>
-        <button class="px-btn btn-gold" onclick="closeModalAndFightId(${t.id})">⚔️ ทดสอบสู้ & จับ!</button>
+        <button class="px-btn btn-green" onclick="huntPokemonOnMap(${t.id})">🗺️ ออกตามล่าในแผนที่!</button>
+        <button class="px-btn btn-gold" onclick="goToGachaFromDex()">🎰 สุ่มตู้กาชา</button>
         <button class="px-btn" onclick="document.getElementById('pixelModal').classList.remove('open')">ปิด</button>
       </div>
     `;
@@ -2098,14 +2263,35 @@ window.closeModalToNextWild = function () {
   document.getElementById('pixelModal').classList.remove('open');
   const t = pickWildPokemonByRarity();
   const lv = Math.max(3, (Game.party[0]?.level || 5));
-  startWildBattle(t, lv, Math.random() < 0.15);
+  startWildBattle(t, lv, Math.random() < WILD_SHINY_RATE);
 };
 
-window.closeModalAndFightId = function (id) {
+window.huntPokemonOnMap = function (id) {
   SFX.uiClick();
   document.getElementById('pixelModal').classList.remove('open');
   const t = POKEMON_DB.find(p => p.id === id);
-  if (t) startWildBattle(t, Math.max(4, Game.party[0]?.level || 5), Game.dexShinyPreview);
+  const firstStageId = t && t.chainIds ? t.chainIds[0] : id;
+  const baseTmpl = POKEMON_DB.find(p => p.id === firstStageId) || t;
+
+  // Spawn an extra wild Pokémon in the grass and switch to the World Map!
+  spawnOverworldWild();
+  SFX.startBGM('overworld');
+  switchScreen('world');
+
+  const banner = document.getElementById('worldHuntBanner');
+  if (banner && t) {
+    if (t.stage === 1) {
+      banner.innerHTML = `🎯 กำลังตามล่าสายพันธุ์ธาตุ<b>${TYPE_INFO[t.type].label}</b> (${RARITY_TIERS[t.rarity].short}) — เดินลุยพุ่มไม้หรือแตะตัวที่เดินอยู่เลย!`;
+    } else {
+      banner.innerHTML = `🎯 เป้าหมายร่าง ${t.stage}/${t.maxStage}: ต้องจับร่างต้น (#${String(baseTmpl.id).padStart(2, '0')}) จากพุ่มไม้หรือกาชา แล้วฝึกเลเวลอัปเพื่อวิวัฒนาการ!`;
+    }
+  }
+};
+
+window.goToGachaFromDex = function () {
+  SFX.uiClick();
+  document.getElementById('pixelModal').classList.remove('open');
+  switchScreen('shop');
 };
 
 function renderAllUI() {
@@ -2130,8 +2316,8 @@ function renderAllUI() {
             ${getPokemonPixelImgHTML(p.code, p.isShiny, 2)}
             <div>
               <div style="font-size:0.72rem;font-weight:700;line-height:1.1;">
-                ${idx === 0 ? '⭐' : ''}${p.name.split(' ')[0]} <span style="color:#ffd166;">Lv${p.level}</span>
-                ${readyEvo ? '<span style="color:#80ed99;">✨</span>' : ''}
+                ${idx === 0 ? '⭐' : ''}${p.name.split(' ')[0]} ${p.isShiny ? '✨' : ''} <span style="color:#ffd166;">Lv${p.level}</span>
+                ${readyEvo ? '<span style="color:#80ed99;">🔼</span>' : ''}
               </div>
               <div class="mini-hp-bar"><div class="mini-hp-fill" style="width:${hpPct}%;background:${hpColor};"></div></div>
             </div>
@@ -2171,8 +2357,8 @@ function renderAllUI() {
           </div>
           <div>
             <div style="display:flex;justify-content:space-between;align-items:center;">
-              <strong style="font-size:0.92rem;color:#fff;">
-                ${idx === 0 ? '⭐ [ตัวนำ] ' : ''}${p.name} ${p.isShiny ? '✨' : ''}
+              <strong style="font-size:0.9rem;color:#fff;">
+                ${idx === 0 ? '⭐ [ตัวนำ] ' : ''}${p.name} ${p.isShiny ? '✨(+15%)' : ''}
               </strong>
               <span style="color:#ffd166;font-weight:700;">Lv.${p.level}</span>
             </div>
@@ -2190,7 +2376,7 @@ function renderAllUI() {
             <div style="margin-top:4px;">${evoBadge}</div>
             <div class="team-card-actions">
               ${idx !== 0 ? `<button class="px-btn btn-gold" onclick="makeLeadPokemon(${idx})">⭐ ตั้งเป็นตัวนำ</button>` : ''}
-              <button class="px-btn" style="background:#7209b7;border-color:#b5179e;" onclick="feedCandyToPartyIdx(${idx})">🍬 +1 Lv (40🪙)</button>
+              <button class="px-btn" style="background:#7209b7;border-color:#b5179e;" onclick="feedCandyToPartyIdx(${idx})">🍬 +1 Lv (60🪙)</button>
               <button class="px-btn" onclick="openDexInspector(${p.id})">🔍 ดูสายร่าง</button>
               ${Game.party.length > 1 ? `<button class="px-btn" style="background:#3a4466;" onclick="movePartyToBox(${idx})">📦 เก็บเข้ากล่อง</button>` : ''}
             </div>
@@ -2206,7 +2392,7 @@ function renderAllUI() {
   const boxGrid = document.getElementById('teamPageBoxGrid');
   if (boxGrid) {
     if (Game.pcBox.length === 0) {
-      boxGrid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:#8b9bb4;padding:18px;">ยังไม่มีโปเกมอนในกล่องสะสม PC (เมื่อจับโปเกมอนเกิน 6 ตัว หรือกดเก็บเข้ากล่อง จะมาอยู่ที่นี่)</div>`;
+      boxGrid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:#8b9bb4;padding:12px;">ยังไม่มีโปเกมอนในกล่องสะสม PC (เมื่อจับโปเกมอนหรือสุ่มกาชาเกิน 6 ตัว จะมาอยู่ที่นี่)</div>`;
     } else {
       boxGrid.innerHTML = Game.pcBox.map((p, bIdx) => {
         const rInfo = RARITY_TIERS[p.rarity] || RARITY_TIERS.common;
@@ -2230,9 +2416,28 @@ function renderAllUI() {
     }
   }
 
-  // 3. Dedicated Shop Page (#view-shop)
+  // 3. Dedicated Gacha & Shop Page (#view-shop)
   const shopCoinsEl = document.getElementById('shopCoinsDisplay');
   if (shopCoinsEl) shopCoinsEl.textContent = Game.coins;
+
+  const gachaContainer = document.getElementById('gachaPageContainer');
+  if (gachaContainer) {
+    gachaContainer.innerHTML = Object.values(GACHA_TIERS).map(tier => `
+      <div class="gacha-machine-card" style="border-color:${tier.borderColor};">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div>${getPokeballPixelImgHTML(tier.ballCode, 3)}</div>
+          <div>
+            <div style="font-weight:700;font-size:0.84rem;color:${tier.borderColor};">${tier.title}</div>
+            <div style="font-size:0.7rem;color:#ffea00;font-weight:700;">✨ โอกาสได้ร่าง Shiny: ${Math.round(tier.shinyRate * 100)}%</div>
+          </div>
+        </div>
+        <p style="font-size:0.72rem;color:#c0cbdc;line-height:1.3;">${tier.desc}</p>
+        <button class="px-btn btn-gold" style="width:100%;padding:5px 8px;font-size:0.76rem;" onclick="rollGachaCapsule('${tier.key}')">
+          🎰 สุ่มแคปซูลนี้ (${tier.price} 🪙)
+        </button>
+      </div>
+    `).join('');
+  }
 
   const shopContainer = document.getElementById('shopPageContainer');
   if (shopContainer) {
@@ -2241,8 +2446,8 @@ function renderAllUI() {
       { key: 'greatball',   icon: getPokeballPixelImgHTML('greatball', 3),   title: '🔵 เกรทบอล (Great Ball)',    desc: 'บอลประสิทธิภาพสูง จับโปเกมอนระดับ Rare ได้ดีขึ้น (โอกาสจับ x1.6)' },
       { key: 'ultraball',   icon: getPokeballPixelImgHTML('ultraball', 3),   title: '🟡 อัลตร้าบอล (Ultra Ball)', desc: 'บอลระดับท็อปสำหรับจับ Epic & Legendary (โอกาสจับ x2.3)' },
       { key: 'masterball',  icon: getPokeballPixelImgHTML('masterball', 3),  title: '🟣 มาสเตอร์บอล (Master Ball)',desc: 'บอลในตำนาน! จับโปเกมอนป่าทุกตัวติด 100% ไม่มีพลาด!' },
-      { key: 'potion',      icon: '<span style="font-size:2rem;">🧪</span>', title: '🧪 ยาโพชั่น (Potion)',        desc: 'ฟื้นฟูพลังชีวิต (HP) +45 หน่วย ใช้ได้ทั้งในฉากต่อสู้' },
-      { key: 'superpotion', icon: '<span style="font-size:2rem;">⚗️</span>', title: '⚗️ ซูเปอร์โพชั่น (Super Potion)', desc: 'ฟื้นฟูพลังชีวิต (HP) เข้มข้น +120 หน่วย สำหรับศึกหนัก' }
+      { key: 'potion',      icon: '<span style="font-size:1.8rem;">🧪</span>', title: '🧪 ยาโพชั่น (Potion)',        desc: 'ฟื้นฟูพลังชีวิต (HP) +45 หน่วย ใช้ได้ในฉากต่อสู้' },
+      { key: 'superpotion', icon: '<span style="font-size:1.8rem;">⚗️</span>', title: '⚗️ ซูเปอร์โพชั่น (Super Potion)', desc: 'ฟื้นฟูพลังชีวิต (HP) เข้มข้น +120 หน่วย สำหรับศึกหนัก' }
     ];
 
     shopContainer.innerHTML = shopItemsMeta.map(meta => {
@@ -2253,15 +2458,15 @@ function renderAllUI() {
           <div style="display:flex;justify-content:center;align-items:center;">${meta.icon}</div>
           <div>
             <div style="display:flex;justify-content:space-between;align-items:center;">
-              <strong style="font-size:0.9rem;color:#ffd166;">${meta.title}</strong>
-              <span style="background:#141824;border:1px solid #5a6988;padding:1px 6px;font-size:0.72rem;color:#80ed99;">มีในกระเป๋า: x${bagItem.count}</span>
+              <strong style="font-size:0.84rem;color:#ffd166;">${meta.title}</strong>
+              <span style="background:#141824;border:1px solid #5a6988;padding:1px 6px;font-size:0.68rem;color:#80ed99;">มี: x${bagItem.count}</span>
             </div>
-            <p style="font-size:0.75rem;color:#c0cbdc;margin:4px 0 8px;">${meta.desc}</p>
+            <p style="font-size:0.72rem;color:#c0cbdc;margin:3px 0 6px;">${meta.desc}</p>
             <div class="shop-buy-row">
-              <button class="px-btn btn-green" style="padding:4px 10px;font-size:0.75rem;" onclick="buyShopItem('${meta.key}', 1)">
+              <button class="px-btn btn-green" style="padding:3px 8px;font-size:0.72rem;" onclick="buyShopItem('${meta.key}', 1)">
                 🛒 ซื้อ x1 (${bagItem.price} 🪙)
               </button>
-              <button class="px-btn btn-gold" style="padding:4px 10px;font-size:0.75rem;" onclick="buyShopItem('${meta.key}', 5)">
+              <button class="px-btn btn-gold" style="padding:3px 8px;font-size:0.72rem;" onclick="buyShopItem('${meta.key}', 5)">
                 📦 เหมา x5 (${bagItem.price * 5} 🪙)
               </button>
             </div>
@@ -2289,14 +2494,14 @@ function renderAllUI() {
       return `
         <div class="dex-card ${isUnlocked ? '' : 'locked-card'}" style="border-color:${isUnlocked ? rInfo.border : '#3a4466'};" onclick="openDexInspector(${p.id})">
           ${isUnlocked
-            ? `<span class="dex-own-tag">จับแล้ว x${owned.count}</span>`
+            ? `<span class="dex-own-tag">${owned.shiny ? '✨ ' : ''}จับแล้ว x${owned.count}</span>`
             : `<span class="dex-own-tag" style="background:#3a4466;color:#adb5bd;">🔒 เงาปริศนา</span>`
           }
           <div style="font-size:0.68rem;color:${rInfo.border};font-weight:700;align-self:flex-start;">
             ${rInfo.short}
           </div>
           <div style="margin:4px 0;">
-            ${getPokemonPixelImgHTML(p.code, isUnlocked && Game.dexShinyPreview, 5, silClass)}
+            ${getPokemonPixelImgHTML(p.code, isUnlocked && (Game.dexShinyPreview || owned.shiny), 5, silClass)}
           </div>
           <div style="font-weight:700;font-size:0.8rem;color:${isUnlocked ? '#ffffff' : '#8b9bb4'};">
             #${String(p.id).padStart(2, '0')} ${displayName}
@@ -2314,6 +2519,7 @@ window.executePlayerMove = executePlayerMove;
 window.useBagItemInBattle = useBagItemInBattle;
 window.switchActivePokemon = switchActivePokemon;
 window.buyShopItem = buyShopItem;
+window.rollGachaCapsule = rollGachaCapsule;
 window.makeLeadPokemon = makeLeadPokemon;
 window.feedCandyToPartyIdx = feedCandyToPartyIdx;
 window.movePartyToBox = movePartyToBox;

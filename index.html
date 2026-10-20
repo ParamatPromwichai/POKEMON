@@ -38,7 +38,7 @@
       <button class="pixel-tab active" data-view="world">🗺️ แผนที่โลก</button>
       <button class="pixel-tab" data-view="battle">⚔️ ฉากต่อสู้ & จับ</button>
       <button class="pixel-tab" data-view="team">🐾 จัดทีม & กล่อง (<span id="tabPartyCount">3/6</span>)</button>
-      <button class="pixel-tab" data-view="shop">🛒 ร้านค้า (SHOP)</button>
+      <button class="pixel-tab" data-view="shop">🎰 กาชา & ร้านค้า</button>
       <button class="pixel-tab" data-view="dex">📖 สมุดภาพ (40)</button>
     </nav>
   </header>
@@ -58,8 +58,8 @@
         <div class="overworld-viewport">
           <canvas id="worldCanvas" width="640" height="432"></canvas>
           <div class="overworld-banner">
-            <div class="pixel-tag">🌿 แตะบนแมพหรือกดปุ่มลูกศรค้างเพื่อเดินลุยหญ้า</div>
-            <div class="pixel-tag">🏥 แตะตึก Pokémon Center เพื่อฮีลเลือดเต็มฟรี</div>
+            <div id="worldHuntBanner" class="pixel-tag">🌿 เดินลุยหญ้าเพื่อหาโปเกมอนป่า (โอกาสเจอ ✨Shiny 5% สเตตัส +15%!)</div>
+            <div class="pixel-tag">🏥 แตะตึก Pokémon Center เพื่อฮีลฟรี</div>
           </div>
         </div>
 
@@ -189,23 +189,29 @@
       </div>
 
       <!-- ====================================================
-           VIEW 4: DEDICATED POKÉ MART SHOP PAGE
+           VIEW 4: DEDICATED GACHA & POKÉ MART SHOP PAGE
            ==================================================== -->
       <div id="view-shop" class="screen-view">
         <div class="page-banner">
           <div>
-            <h2 style="color:#ffd166;font-size:0.95rem;">🛒 ร้านค้า POKÉ MART & ศูนย์ไอเทมวิวัฒนาการ</h2>
+            <h2 style="color:#ffd166;font-size:0.95rem;">🎰 ตู้สุ่มไข่กาชา (POKÉ GACHA) & 🛒 ร้านค้า POKÉ MART</h2>
           </div>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <button class="px-btn" style="background:#7209b7;border-color:#b5179e;padding:4px 10px;font-size:0.75rem;" onclick="useRareCandyOnLead()">🍬 แคนดี้ +1 Lv ตัวนำ (40🪙)</button>
-            <button class="px-btn btn-gold" style="padding:4px 10px;font-size:0.75rem;" onclick="triggerManualEvolveLead()">💎 หินวิวัฒนาการตัวนำทันที (80🪙)</button>
-            <div class="metric-chip" style="font-size:0.86rem;padding:4px 10px;border-color:#ffd166;">
-              🪙 เหรียญ: <span id="shopCoinsDisplay" style="color:#ffd166;">450</span>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+            <button class="px-btn" style="background:#7209b7;border-color:#b5179e;padding:4px 8px;font-size:0.73rem;" onclick="useRareCandyOnLead()">🍬 แคนดี้ +1 Lv ตัวนำ (60🪙)</button>
+            <button class="px-btn btn-gold" style="padding:4px 8px;font-size:0.73rem;" onclick="triggerManualEvolveLead()">💎 หินวิวัฒนาการตัวนำ (150🪙)</button>
+            <div class="metric-chip" style="font-size:0.84rem;padding:4px 10px;border-color:#ffd166;">
+              🪙 เหรียญ: <span id="shopCoinsDisplay" style="color:#ffd166;">250</span>
             </div>
           </div>
         </div>
 
-        <div id="shopPageContainer" class="shop-cards-grid"></div>
+        <div class="team-page-scroll">
+          <h3 class="section-sub-title">🎰 ตู้สุ่มแคปซูลโปเกมอน (สุ่มรับโปเกมอนเข้าทีม/กล่องทันที + โอกาสออก ✨SHINY สูง!)</h3>
+          <div id="gachaPageContainer" class="gacha-cards-grid"></div>
+
+          <h3 class="section-sub-title" style="margin-top:10px;">🛒 ร้านค้าไอเทม & โปเกบอล (POKÉ MART)</h3>
+          <div id="shopPageContainer" class="shop-cards-grid"></div>
+        </div>
       </div>
 
       <!-- ====================================================
@@ -215,7 +221,7 @@
         <div class="page-banner">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <h2 style="color:#ffd166;font-size:0.95rem;">📖 สมุดภาพ (40 สายพันธุ์)</h2>
-            <span style="font-size:0.75rem;color:#c0cbdc;">ตัวที่ยังไม่ปลดล็อกจะเป็น <b style="color:#ff758f;">เงาปริศนา (???)</b></span>
+            <span style="font-size:0.72rem;color:#80ed99;">✨ ร่าง Shiny หาได้จาก: พุ่มไม้ (5%), ตู้สุ่มกาชา (8%–30%) หรือพัฒนาร่างจากตัว Shiny (สเตตัสทุกด้าน +15%!)</span>
           </div>
           <div id="dexRarityFilterBar" style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
             <button class="px-btn" style="padding:3px 8px;font-size:0.72rem;" onclick="setDexRarityFilter('all')">ทั้งหมด</button>
@@ -224,7 +230,7 @@
             <button class="px-btn" style="padding:3px 8px;font-size:0.72rem;background:#7209b7;" onclick="setDexRarityFilter('epic')">★★★</button>
             <button class="px-btn" style="padding:3px 8px;font-size:0.72rem;background:#e85d04;" onclick="setDexRarityFilter('legendary')">★★★★</button>
             <button class="px-btn" style="padding:3px 8px;font-size:0.72rem;background:#d90429;" onclick="setDexRarityFilter('mythic')">★★★★★</button>
-            <button id="btnToggleDexShiny" class="px-btn btn-gold" style="padding:3px 8px;font-size:0.72rem;">✨ SHINY</button>
+            <button id="btnToggleDexShiny" class="px-btn btn-gold" style="padding:3px 8px;font-size:0.72rem;">✨ ดูสี SHINY</button>
           </div>
         </div>
 
